@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg:            #111214;
+  --surface:       #1A1C1F;
+  --surface-hi:    #222528;
+  --border:        rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.13);
+  --text:          #ECEEF2;
+  --text-muted:    #9AA3AF;
+  --text-faint:    #5A6370;
+}
+.light {
+  --bg:            #F2F3F5;
+  --surface:       #FFFFFF;
+  --surface-hi:    #EAECEF;
+  --border:        rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.14);
+  --text:          #0F1114;
+  --text-muted:    #444C56;
+  --text-faint:    #7A8490;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+@layer components {
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+  .card-hi { background: var(--surface-hi); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+  .label { font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-faint); }
+  .input-base { width: 100%; background: var(--surface-hi); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text); font-size: 13px; padding: 8px 12px; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+  .input-base:focus { border-color: #E8442A; box-shadow: 0 0 0 3px rgba(232,68,42,0.12); }
+  .input-base::placeholder { color: var(--text-faint); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 600; padding: 8px 16px; cursor: pointer; transition: all 0.15s; white-space: nowrap; border: 1px solid transparent; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: #E8442A; color: #fff; border-color: #E8442A; }
+  .btn-primary:hover:not(:disabled) { background: #C23218; border-color: #C23218; }
+  .btn-secondary { background: var(--surface-hi); color: var(--text); border-color: var(--border-strong); }
+  .btn-secondary:hover:not(:disabled) { border-color: var(--text-faint); }
+  .btn-ghost { background: transparent; color: var(--text-muted); border-color: transparent; }
+  .btn-ghost:hover:not(:disabled) { background: var(--surface-hi); color: var(--text); }
+  .skeleton { background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hi) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; border-radius: 6px; }
+}
+
+@keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.animate-fade-up { animation: fade-up 0.28s ease-out both; }
+.animate-pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+
+.mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
+.mapboxgl-popup-content { background: var(--surface) !important; color: var(--text) !important; border: 1px solid var(--border-strong) !important; border-radius: 10px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important; padding: 10px 14px !important; font-family: 'DM Sans', sans-serif !important; font-size: 12px !important; }
+.mapboxgl-popup-tip { display: none !important; }
+.recharts-cartesian-grid line { stroke: var(--border) !important; }
+.recharts-text { fill: var(--text-faint) !important; font-size: 11px !important; }

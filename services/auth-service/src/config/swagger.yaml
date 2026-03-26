@@ -1,0 +1,468 @@
+openapi: 3.0.3
+info:
+  title: Auth Service API
+  description: |
+    Identity & Authentication Microservice for the National Emergency Response
+    and Dispatch Coordination Platform.
+
+    Handles user registration, login, JWT token management, role-based
+    access control, and user administration.
+  version: 1.0.0
+  contact:
+    name: CPEN 421 Team
+    email: team@emergency-platform.gh
+
+servers:
+  - url: http://localhost:3001
+    description: Local development
+  - url: http://api-gateway:3000/auth
+    description: Via API Gateway
+
+tags:
+  - name: Authentication
+    description: Register, login, logout and token management
+  - name: Profile
+    description: Authenticated user profile operations
+  - name: Admin
+    description: SYSTEM_ADMIN-only user management
+  - name: Internal
+    description: Internal endpoints for inter-service communication
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: x-internal-secret
+
+  schemas:
+    Role:
+      type: string
+      enum:
+        - SYSTEM_ADMIN
+        - HOSPITAL_ADMIN
+        - POLICE_ADMIN
+        - FIRE_SERVICE_ADMIN
+        - AMBULANCE_DRIVER
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Kwame Mensah
+        email:
+          type: string
+          format: email
+          example: kwame@emergency.gh
+        role:
+          $ref: '#/components/schemas/Role'
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TokenPair:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Access token lifetime in seconds
+          example: 900
+
+    ApiSuccess:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          type: object
+
+    ApiError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+        code:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+paths:
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      description: Creates a new system user account. Returns JWT tokens on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, role]
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  example: Kwame Mensah
+                email:
+                  type: string
+                  format: email
+                  example: kwame@emergency.gh
+                password:
+                  type: string
+                  minLength: 8
+                  description: Must contain uppercase, lowercase, and a number
+                  example: SecurePass123
+                role:
+                  $ref: '#/components/schemas/Role'
+      responses:
+        '201':
+          description: Registration successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/UserProfile'
+                          tokens:
+                            $ref: '#/components/schemas/TokenPair'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          description: Too many requests
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login
+      description: Authenticates a user and returns a JWT access token and refresh token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: kwame@emergency.gh
+                password:
+                  type: string
+                  example: SecurePass123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/UserProfile'
+                          tokens:
+                            $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          description: Too many login attempts
+
+  /auth/refresh-token:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      description: Exchanges a valid refresh token for a new token pair (rotation).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: Tokens refreshed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/TokenPair'
+        '401':
+          description: Invalid or expired refresh token
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout
+      description: Blacklists the access token and revokes the refresh token.
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+                  description: Optional — if provided, will also be revoked
+      responses:
+        '200':
+          description: Logged out successfully
+        '401':
+          description: Not authenticated
+
+  /auth/profile:
+    get:
+      tags: [Profile]
+      summary: Get own profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/UserProfile'
+        '401':
+          description: Not authenticated
+
+    put:
+      tags: [Profile]
+      summary: Update own profile
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                currentPassword:
+                  type: string
+                  description: Required if changing password
+                newPassword:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Profile updated
+        '400':
+          description: Current password incorrect
+        '401':
+          description: Not authenticated
+
+  /auth/users:
+    get:
+      tags: [Admin]
+      summary: List all users
+      description: Returns paginated list of all users. SYSTEM_ADMIN only.
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Users retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          users:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/UserProfile'
+                          total:
+                            type: integer
+                          page:
+                            type: integer
+                          pages:
+                            type: integer
+        '403':
+          description: Forbidden — SYSTEM_ADMIN role required
+
+  /auth/users/{id}/role:
+    put:
+      tags: [Admin]
+      summary: Update user role
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  $ref: '#/components/schemas/Role'
+      responses:
+        '200':
+          description: Role updated
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+
+  /auth/users/{id}:
+    delete:
+      tags: [Admin]
+      summary: Deactivate user account
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User deactivated
+        '403':
+          description: Forbidden
+        '404':
+          description: User not found
+
+  /auth/verify-token:
+    post:
+      tags: [Internal]
+      summary: Verify JWT token validity
+      description: |
+        Internal endpoint used by the API Gateway to validate tokens before
+        routing requests to downstream services.
+        Requires the x-internal-secret header.
+      security:
+        - InternalSecret: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Token verification result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          valid:
+                            type: boolean
+                          payload:
+                            type: object
+                            properties:
+                              sub:
+                                type: string
+                              email:
+                                type: string
+                              role:
+                                $ref: '#/components/schemas/Role'
+                              jti:
+                                type: string
+        '403':
+          description: Missing or invalid internal secret

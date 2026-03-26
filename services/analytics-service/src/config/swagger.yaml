@@ -1,0 +1,347 @@
+openapi: 3.0.3
+info:
+  title: Analytics & Monitoring Service API
+  description: |
+    Analytics and operational insights microservice for the National Emergency
+    Response and Dispatch Coordination Platform.
+
+    Consumes RabbitMQ events from all other services and aggregates them into
+    dashboards, reports and operational metrics.
+
+    ## Data Sources
+    Listens on these RabbitMQ queues:
+    - `analytics.incident.created`
+    - `analytics.incident.dispatched`
+    - `analytics.incident.resolved`
+    - `analytics.location.updated`
+    - `analytics.trip.completed`
+    - `analytics.vehicle.unresponsive`
+
+    ## Extra Features
+    - **Live dashboard snapshot** — single endpoint with all key metrics
+    - **Heatmap data** — lat/lng clusters weighted by incident frequency
+    - **Peak hours analysis** — 24-hour breakdown of incident volume
+    - **Responder leaderboard** — ranked by dispatches, speed and SLA compliance
+    - **SLA tracking** — % of incidents dispatched within 8-minute target
+    - **Streak tracking** — consecutive on-time dispatch streaks per responder
+
+    ## Caching
+    All endpoints are cached in Redis. Cache is invalidated automatically
+    when new RabbitMQ events arrive.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3004
+    description: Local development
+
+tags:
+  - name: Dashboard
+    description: Combined snapshot for frontend dashboards
+  - name: Incidents
+    description: Incident analytics and regional breakdowns
+  - name: Performance
+    description: Response times and SLA compliance
+  - name: Resources
+    description: Vehicle and responder utilization
+  - name: Extra Features
+    description: Peak hours, heatmap, leaderboard
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PeriodParam:
+      in: query
+      name: period
+      schema:
+        type: string
+        enum: [today, week, month, year]
+        default: week
+      description: Time period for the report
+
+  schemas:
+    ResponseTimeStats:
+      type: object
+      properties:
+        avgDispatchTimeSec:   { type: integer, example: 312 }
+        avgArrivalTimeSec:    { type: integer, example: 487 }
+        avgResolutionTimeSec: { type: integer, example: 2640 }
+        minDispatchTimeSec:   { type: integer, example: 45 }
+        maxDispatchTimeSec:   { type: integer, example: 890 }
+        totalIncidents:       { type: integer, example: 47 }
+        period:               { type: string,  example: week }
+
+    RegionStat:
+      type: object
+      properties:
+        region:      { type: string, example: Greater Accra }
+        total:       { type: integer, example: 23 }
+        byType:
+          type: object
+          additionalProperties: { type: integer }
+          example: { MEDICAL: 12, FIRE: 5, CRIME: 6 }
+        avgPriority: { type: number, example: 1.8 }
+
+    PeakHour:
+      type: object
+      properties:
+        hour:  { type: integer, minimum: 0, maximum: 23, example: 14 }
+        count: { type: integer, example: 8 }
+        label: { type: string,  example: "2:00 PM" }
+
+    HeatmapPoint:
+      type: object
+      properties:
+        latitude:  { type: number, example: 5.60 }
+        longitude: { type: number, example: -0.19 }
+        weight:    { type: integer, example: 7 }
+        type:      { type: string,  example: MEDICAL }
+
+    ResponderLeaderboard:
+      type: object
+      properties:
+        responderId:        { type: string }
+        responderName:      { type: string,  example: "Korle Bu Ambulance Unit 1" }
+        responderType:      { type: string,  example: AMBULANCE }
+        totalDispatches:    { type: integer, example: 34 }
+        totalResolved:      { type: integer, example: 31 }
+        avgDispatchTimeSec: { type: integer, example: 187 }
+        slaComplianceRate:  { type: number,  example: 91.2 }
+        currentStreak:      { type: integer, example: 7 }
+        bestStreak:         { type: integer, example: 12 }
+
+    SlaReport:
+      type: object
+      properties:
+        totalIncidents:  { type: integer, example: 47 }
+        withinSla:       { type: integer, example: 39 }
+        outsideSla:      { type: integer, example: 8 }
+        complianceRate:  { type: number,  example: 83 }
+        slaTargetSec:    { type: integer, example: 480 }
+        byType:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              total:     { type: integer }
+              withinSla: { type: integer }
+              rate:      { type: number }
+
+    DashboardSnapshot:
+      type: object
+      properties:
+        generatedAt:           { type: string, format: date-time }
+        totalIncidents:        { type: integer }
+        openIncidents:         { type: integer }
+        resolvedToday:         { type: integer }
+        avgResponseTimeSec:    { type: integer }
+        slaComplianceRate:     { type: number }
+        activeVehicles:        { type: integer }
+        unresponsiveVehicles:  { type: integer }
+        incidentsByType:
+          type: object
+          additionalProperties: { type: integer }
+        incidentsByStatus:
+          type: object
+          additionalProperties: { type: integer }
+        topResponders:
+          type: array
+          items: { $ref: '#/components/schemas/ResponderLeaderboard' }
+        recentActivity:
+          type: array
+          items:
+            type: object
+            properties:
+              incidentId: { type: string }
+              type:       { type: string }
+              region:     { type: string }
+              status:     { type: string }
+              createdAt:  { type: string, format: date-time }
+
+    ApiSuccess:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data:    { type: object }
+
+    ApiError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        code:    { type: string }
+
+security:
+  - BearerAuth: []
+
+paths:
+  /analytics/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Get live dashboard snapshot
+      description: |
+        Returns a single combined snapshot of all key metrics for the frontend
+        dashboard. Cached in Redis and invalidated on every new incident event.
+        This is the primary endpoint for the admin dashboard page.
+      responses:
+        '200':
+          description: Dashboard snapshot
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/DashboardSnapshot' }
+
+  /analytics/response-times:
+    get:
+      tags: [Performance]
+      summary: Get average response time statistics
+      parameters:
+        - $ref: '#/components/parameters/PeriodParam'
+      responses:
+        '200':
+          description: Response time stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ResponseTimeStats' }
+
+  /analytics/incidents-by-region:
+    get:
+      tags: [Incidents]
+      summary: Get incident counts grouped by Ghana region
+      description: Returns incident counts per region with type breakdown. Regions are auto-detected from GPS coordinates.
+      parameters:
+        - $ref: '#/components/parameters/PeriodParam'
+      responses:
+        '200':
+          description: Incidents by region
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/RegionStat' }
+
+  /analytics/resource-utilization:
+    get:
+      tags: [Resources]
+      summary: Get current resource deployment rates
+      description: Returns how many units of each type are currently deployed vs available.
+      responses:
+        '200':
+          description: Resource utilization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiSuccess'
+
+  /analytics/peak-hours:
+    get:
+      tags: [Extra Features]
+      summary: Get incident volume by hour of day
+      description: |
+        Returns a 24-hour breakdown of when incidents are most commonly reported.
+        Useful for staffing decisions — ensures enough operators are available
+        during high-volume hours.
+      parameters:
+        - $ref: '#/components/parameters/PeriodParam'
+      responses:
+        '200':
+          description: Peak hours data
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PeakHour' }
+
+  /analytics/top-responders:
+    get:
+      tags: [Extra Features]
+      summary: Get responder performance leaderboard
+      description: |
+        Ranks responders by total dispatches, average response time, and SLA
+        compliance rate. Includes consecutive on-time dispatch streak tracking.
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 10, maximum: 50 }
+      responses:
+        '200':
+          description: Top responders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ResponderLeaderboard' }
+
+  /analytics/sla:
+    get:
+      tags: [Extra Features]
+      summary: Get SLA compliance report
+      description: |
+        Reports what percentage of incidents were dispatched within the SLA
+        target (default 8 minutes / 480 seconds). Broken down by incident type.
+      parameters:
+        - $ref: '#/components/parameters/PeriodParam'
+      responses:
+        '200':
+          description: SLA report
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/SlaReport' }
+
+  /analytics/heatmap:
+    get:
+      tags: [Extra Features]
+      summary: Get incident heatmap coordinates
+      description: |
+        Returns GPS coordinate clusters weighted by incident frequency.
+        Coordinates are rounded to a ~1km grid for clustering. Use with
+        Google Maps Heatmap Layer on the frontend.
+      parameters:
+        - $ref: '#/components/parameters/PeriodParam'
+      responses:
+        '200':
+          description: Heatmap data points
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/HeatmapPoint' }

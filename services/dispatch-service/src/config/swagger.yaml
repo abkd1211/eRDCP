@@ -1,0 +1,370 @@
+openapi: 3.0.3
+info:
+  title: Dispatch Tracking Service API
+  description: |
+    Real-time vehicle dispatch and GPS tracking microservice for the
+    National Emergency Response and Dispatch Coordination Platform.
+
+    ## Key Features
+    - **Real-time GPS tracking** via Socket.io WebSockets
+    - **ETA calculation** using Haversine distance and live vehicle speed
+    - **Route deviation detection** using cross-track distance formula
+    - **Arrival detection** when vehicle is within 100m of incident
+    - **Unresponsive vehicle detection** via heartbeat monitoring
+    - **Auto trip summary** on incident resolution (distance, duration, speed)
+    - **REST fallback** for GPS pings when WebSocket is unavailable
+
+    ## Socket.io Events
+    Connect to `ws://localhost:3003` with a JWT Bearer token.
+
+    ### Client → Server
+    | Event | Payload | Description |
+    |-------|---------|-------------|
+    | `join:incident` | `incidentId: string` | Watch all vehicles for an incident |
+    | `join:vehicle` | `vehicleId: string` | Watch a specific vehicle |
+    | `gps:ping` | `GpsPingDto` | Send GPS location update |
+    | `driver:online` | `vehicleId: string` | Mark driver as online |
+    | `driver:offline` | `vehicleId: string` | Mark driver as offline |
+
+    ### Server → Client
+    | Event | Description |
+    |-------|-------------|
+    | `location:update` | New GPS position for a vehicle |
+    | `eta:update` | Recalculated ETA to incident scene |
+    | `route:deviation` | Vehicle has deviated from expected path |
+    | `vehicle:arrived` | Vehicle is within 100m of destination |
+    | `vehicle:unresponsive` | No GPS ping received within timeout |
+    | `vehicle:status` | Vehicle status change |
+    | `trip:completed` | Trip summary after incident resolved |
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3003
+    description: Local development
+  - url: http://api-gateway:3000
+    description: Via API Gateway
+
+tags:
+  - name: Vehicles
+    description: Vehicle registration and management
+  - name: Tracking
+    description: GPS location and history
+  - name: Dispatch
+    description: Dispatch assignment queries
+  - name: Trips
+    description: Trip completion and summaries
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    VehicleType:
+      type: string
+      enum: [AMBULANCE, POLICE, FIRE_TRUCK]
+
+    VehicleStatus:
+      type: string
+      enum: [AVAILABLE, DISPATCHED, EN_ROUTE, ON_SCENE, RETURNING, OFFLINE, UNRESPONSIVE]
+
+    Location:
+      type: object
+      properties:
+        latitude:  { type: number, example: 5.6037 }
+        longitude: { type: number, example: -0.1870 }
+        updatedAt: { type: string, format: date-time }
+
+    Vehicle:
+      type: object
+      properties:
+        _id:               { type: string }
+        vehicleCode:       { type: string, example: AMB-KBT-01 }
+        type:              { $ref: '#/components/schemas/VehicleType' }
+        stationId:         { type: string }
+        stationName:       { type: string, example: Korle Bu Teaching Hospital }
+        driverName:        { type: string, example: Kwesi Mensah }
+        status:            { $ref: '#/components/schemas/VehicleStatus' }
+        currentLocation:   { $ref: '#/components/schemas/Location' }
+        currentIncidentId: { type: string, nullable: true }
+        speedKmh:          { type: number, example: 65.5 }
+        heading:           { type: string, example: NE }
+        batteryPct:        { type: number, nullable: true, example: 78 }
+        isUnresponsive:    { type: boolean }
+        routeDeviation:    { type: boolean }
+        lastHeartbeatAt:   { type: string, format: date-time }
+        createdAt:         { type: string, format: date-time }
+
+    LocationHistory:
+      type: object
+      properties:
+        vehicleId:  { type: string }
+        incidentId: { type: string, nullable: true }
+        latitude:   { type: number }
+        longitude:  { type: number }
+        speedKmh:   { type: number }
+        heading:    { type: string }
+        batteryPct: { type: number, nullable: true }
+        recordedAt: { type: string, format: date-time }
+
+    TripSummary:
+      type: object
+      properties:
+        totalDistanceKm: { type: number, example: 4.72 }
+        durationSec:     { type: number, example: 487 }
+        avgSpeedKmh:     { type: number, example: 34.9 }
+        maxSpeedKmh:     { type: number, example: 85.0 }
+        pingCount:       { type: number, example: 97 }
+
+    GpsPingBody:
+      type: object
+      required: [latitude, longitude]
+      properties:
+        latitude:   { type: number, example: 5.6037 }
+        longitude:  { type: number, example: -0.1870 }
+        speedKmh:   { type: number, example: 65.0 }
+        heading:    { type: string, example: NE }
+        batteryPct: { type: number, example: 78 }
+
+    ApiSuccess:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data:    { type: object }
+
+    ApiError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        code:    { type: string }
+
+security:
+  - BearerAuth: []
+
+paths:
+  /vehicles/register:
+    post:
+      tags: [Vehicles]
+      summary: Register a new emergency vehicle
+      description: Registers a vehicle with its driver and links it to a responder unit in the Incident Service.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicleCode, type, stationId, stationName, incidentServiceId, driverUserId, driverName, latitude, longitude]
+              properties:
+                vehicleCode:       { type: string, example: AMB-KBT-01 }
+                type:              { $ref: '#/components/schemas/VehicleType' }
+                stationId:         { type: string }
+                stationName:       { type: string, example: Korle Bu Teaching Hospital }
+                incidentServiceId: { type: string, description: Responder ID from Incident Service }
+                driverUserId:      { type: string, description: User ID from Auth Service }
+                driverName:        { type: string, example: Kwesi Mensah }
+                latitude:          { type: number, example: 5.5360 }
+                longitude:         { type: number, example: -0.2278 }
+      responses:
+        '201':
+          description: Vehicle registered
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Vehicle' }
+        '409': { description: Vehicle code already registered }
+
+  /vehicles:
+    get:
+      tags: [Vehicles]
+      summary: List all vehicles
+      parameters:
+        - in: query
+          name: type
+          schema: { $ref: '#/components/schemas/VehicleType' }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/VehicleStatus' }
+      responses:
+        '200':
+          description: Vehicles retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Vehicle' }
+
+  /vehicles/{id}:
+    get:
+      tags: [Vehicles]
+      summary: Get vehicle details
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Vehicle retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Vehicle' }
+        '404': { description: Vehicle not found }
+
+  /vehicles/{id}/location:
+    get:
+      tags: [Tracking]
+      summary: Get current vehicle location
+      description: Returns the cached location from Redis if fresh, otherwise falls back to MongoDB.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Location retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Location' }
+
+    put:
+      tags: [Tracking]
+      summary: Push GPS location update (REST fallback)
+      description: |
+        REST fallback for when Socket.io is unavailable. Primary GPS updates
+        should use the `gps:ping` Socket.io event for lower latency.
+        Triggers ETA recalculation, deviation check, and arrival detection.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GpsPingBody' }
+      responses:
+        '200': { description: Location updated }
+        '404': { description: Vehicle not found }
+
+  /vehicles/{id}/history:
+    get:
+      tags: [Tracking]
+      summary: Get vehicle GPS location history
+      description: Returns up to 500 historical GPS pings, most recent first. Auto-deleted after 30 days.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, maximum: 500 }
+      responses:
+        '200':
+          description: History retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/LocationHistory' }
+
+  /vehicles/{id}/assignment:
+    get:
+      tags: [Dispatch]
+      summary: Get active dispatch assignment for a vehicle
+      description: Returns the current assignment including ETA, origin, destination, and status.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Assignment retrieved (null if no active assignment)
+
+  /vehicles/{id}/trip/complete:
+    post:
+      tags: [Trips]
+      summary: Complete a trip and generate trip summary
+      description: |
+        Marks the dispatch assignment as completed, calculates full trip statistics
+        (total distance, duration, avg/max speed, ping count), frees the vehicle,
+        and publishes a `trip.completed` event to RabbitMQ for analytics.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [incidentId]
+              properties:
+                incidentId: { type: string }
+      responses:
+        '200':
+          description: Trip completed and summary generated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/TripSummary' }
+
+  /dispatch/{incidentId}:
+    get:
+      tags: [Dispatch]
+      summary: Get all vehicles assigned to an incident
+      parameters:
+        - in: path
+          name: incidentId
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Vehicles retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Vehicle' }

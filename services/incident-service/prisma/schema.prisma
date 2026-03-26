@@ -1,0 +1,164 @@
+// ─── Prisma Schema ────────────────────────────────────────────────────────────
+// Incident Service — PostgreSQL
+// National Emergency Response & Dispatch Coordination Platform
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IncidentType {
+  MEDICAL
+  FIRE
+  CRIME
+  ACCIDENT
+  OTHER
+}
+
+enum IncidentStatus {
+  CREATED
+  DISPATCHED
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
+enum ResponderType {
+  AMBULANCE
+  POLICE
+  FIRE_TRUCK
+}
+
+enum ResponderStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+}
+
+// ─── Incidents ────────────────────────────────────────────────────────────────
+model Incident {
+  id               String         @id @default(uuid())
+  citizenName      String         @map("citizen_name")
+  citizenPhone     String?        @map("citizen_phone")
+  incidentType     IncidentType   @map("incident_type")
+  latitude         Float
+  longitude        Float
+  address          String?
+  notes            String?
+  createdBy        String         @map("created_by")
+  assignedUnitId   String?        @map("assigned_unit_id")
+  assignedUnitType ResponderType? @map("assigned_unit_type")
+  status           IncidentStatus @default(CREATED)
+  priority         Int            @default(1)
+
+  // If this is a linked witness report of an existing incident,
+  // parentIncidentId points to the original. Parent handles dispatch;
+  // this record captures additional witness info only.
+  parentIncidentId String?        @map("parent_incident_id")
+
+  dispatchedAt     DateTime?      @map("dispatched_at")
+  resolvedAt       DateTime?      @map("resolved_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  statusHistory    IncidentStatusHistory[]
+  responder        Responder?     @relation(fields: [assignedUnitId], references: [id])
+  linkedReports    RelatedIncidentReport[] @relation("ParentIncident")
+
+  @@index([status])
+  @@index([incidentType])
+  @@index([createdAt])
+  @@index([createdBy])
+  @@index([parentIncidentId])
+  @@map("incidents")
+}
+
+// ─── Related Incident Reports ─────────────────────────────────────────────────
+// Captures additional witness reports linked to a parent incident.
+// Incidents with multiple linked reports signal higher urgency
+// and are surfaced in the analytics dashboard.
+model RelatedIncidentReport {
+  id               String   @id @default(uuid())
+  parentIncidentId String   @map("parent_incident_id")
+  citizenName      String   @map("citizen_name")
+  citizenPhone     String?  @map("citizen_phone")
+  notes            String?
+  createdBy        String   @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  parentIncident   Incident @relation("ParentIncident", fields: [parentIncidentId], references: [id], onDelete: Cascade)
+
+  @@index([parentIncidentId])
+  @@map("related_incident_reports")
+}
+
+// ─── Incident Status History ──────────────────────────────────────────────────
+model IncidentStatusHistory {
+  id          String         @id @default(uuid())
+  incidentId  String         @map("incident_id")
+  oldStatus   IncidentStatus @map("old_status")
+  newStatus   IncidentStatus @map("new_status")
+  changedBy   String         @map("changed_by")
+  note        String?
+  changedAt   DateTime       @default(now()) @map("changed_at")
+
+  incident    Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
+  @@index([changedAt])
+  @@map("incident_status_history")
+}
+
+// ─── Responders ───────────────────────────────────────────────────────────────
+// Stores registered emergency response units (ambulances, police stations, fire stations)
+model Responder {
+  id           String          @id @default(uuid())
+  name         String
+  type         ResponderType
+  stationName  String          @map("station_name")
+  latitude     Float
+  longitude    Float
+  address      String?
+  phone        String?
+  capacity     Int             @default(1)
+  status       ResponderStatus @default(AVAILABLE)
+  managedBy    String?         @map("managed_by")          // user id from auth service
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  // Hospital-specific fields (populated for AMBULANCE type responders)
+  hospitalId        String?  @map("hospital_id")
+  totalBeds         Int?     @map("total_beds")
+  availableBeds     Int?     @map("available_beds")
+  bedsUpdatedAt     DateTime? @map("beds_updated_at")
+
+  incidents    Incident[]
+
+  @@index([type])
+  @@index([status])
+  @@index([latitude, longitude])
+  @@index([availableBeds])
+  @@map("responders")
+}
+
+// ─── Hospital Capacity Snapshots ──────────────────────────────────────────────
+// Tracks historical hospital capacity updates for analytics
+model HospitalCapacityLog {
+  id              String   @id @default(uuid())
+  responderId     String   @map("responder_id")
+  hospitalId      String   @map("hospital_id")
+  stationName     String   @map("station_name")
+  totalBeds       Int      @map("total_beds")
+  availableBeds   Int      @map("available_beds")
+  updatedBy       String   @map("updated_by")
+  recordedAt      DateTime @default(now()) @map("recorded_at")
+
+  @@index([responderId])
+  @@index([recordedAt])
+  @@map("hospital_capacity_logs")
+}

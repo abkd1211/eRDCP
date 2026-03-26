@@ -1,0 +1,423 @@
+openapi: 3.0.3
+info:
+  title: Incident Service API
+  description: |
+    Emergency Incident Microservice for the National Emergency Response
+    and Dispatch Coordination Platform.
+
+    Handles incident creation, automatic nearest-responder selection using
+    the Haversine geolocation algorithm, incident lifecycle management,
+    and responder registration.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3002
+    description: Local development
+  - url: http://api-gateway:3000/incidents
+    description: Via API Gateway
+
+tags:
+  - name: Incidents
+    description: Incident CRUD and lifecycle management
+  - name: Responders
+    description: Emergency responder unit management
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    IncidentType:
+      type: string
+      enum: [MEDICAL, FIRE, CRIME, ACCIDENT, OTHER]
+
+    IncidentStatus:
+      type: string
+      enum: [CREATED, DISPATCHED, IN_PROGRESS, RESOLVED, CANCELLED]
+
+    ResponderType:
+      type: string
+      enum: [AMBULANCE, POLICE, FIRE_TRUCK]
+
+    ResponderStatus:
+      type: string
+      enum: [AVAILABLE, BUSY, OFFLINE]
+
+    Responder:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        name:        { type: string, example: "Korle Bu Ambulance Unit 1" }
+        type:        { $ref: '#/components/schemas/ResponderType' }
+        stationName: { type: string, example: "Korle Bu Teaching Hospital" }
+        latitude:    { type: number, example: 5.5360 }
+        longitude:   { type: number, example: -0.2278 }
+        address:     { type: string }
+        phone:       { type: string }
+        capacity:    { type: integer }
+        status:      { $ref: '#/components/schemas/ResponderStatus' }
+        createdAt:   { type: string, format: date-time }
+
+    StatusHistory:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        oldStatus:  { $ref: '#/components/schemas/IncidentStatus' }
+        newStatus:  { $ref: '#/components/schemas/IncidentStatus' }
+        changedBy:  { type: string }
+        note:       { type: string }
+        changedAt:  { type: string, format: date-time }
+
+    Incident:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        citizenName:      { type: string, example: "Kofi Adu" }
+        citizenPhone:     { type: string, example: "+233244123456" }
+        incidentType:     { $ref: '#/components/schemas/IncidentType' }
+        latitude:         { type: number, example: 5.6037 }
+        longitude:        { type: number, example: -0.1870 }
+        address:          { type: string, example: "Ring Road, Accra" }
+        notes:            { type: string }
+        priority:         { type: integer, minimum: 1, maximum: 3 }
+        createdBy:        { type: string, format: uuid }
+        assignedUnitId:   { type: string, format: uuid, nullable: true }
+        assignedUnitType: { $ref: '#/components/schemas/ResponderType' }
+        status:           { $ref: '#/components/schemas/IncidentStatus' }
+        dispatchedAt:     { type: string, format: date-time, nullable: true }
+        resolvedAt:       { type: string, format: date-time, nullable: true }
+        createdAt:        { type: string, format: date-time }
+        updatedAt:        { type: string, format: date-time }
+        statusHistory:
+          type: array
+          items: { $ref: '#/components/schemas/StatusHistory' }
+        responder:        { $ref: '#/components/schemas/Responder' }
+
+    PaginatedIncidents:
+      type: object
+      properties:
+        data:  { type: array, items: { $ref: '#/components/schemas/Incident' } }
+        total: { type: integer }
+        page:  { type: integer }
+        pages: { type: integer }
+        limit: { type: integer }
+
+    NearestResponder:
+      type: object
+      properties:
+        responderId:   { type: string, format: uuid }
+        responderName: { type: string }
+        responderType: { $ref: '#/components/schemas/ResponderType' }
+        distanceKm:    { type: number, example: 2.34 }
+        coordinates:
+          type: object
+          properties:
+            latitude:  { type: number }
+            longitude: { type: number }
+
+    ApiSuccess:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data:    { type: object }
+
+    ApiError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        code:    { type: string }
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+security:
+  - BearerAuth: []
+
+paths:
+  /incidents:
+    post:
+      tags: [Incidents]
+      summary: Create a new incident
+      description: |
+        Creates a new emergency incident and automatically finds and dispatches
+        the nearest available responder using the Haversine algorithm.
+        Publishes `incident.created` and `incident.dispatched` events to RabbitMQ.
+        Requires SYSTEM_ADMIN role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [citizenName, incidentType, latitude, longitude]
+              properties:
+                citizenName:
+                  type: string
+                  example: Kofi Adu
+                citizenPhone:
+                  type: string
+                  example: "+233244123456"
+                incidentType:
+                  $ref: '#/components/schemas/IncidentType'
+                latitude:
+                  type: number
+                  example: 5.6037
+                longitude:
+                  type: number
+                  example: -0.1870
+                address:
+                  type: string
+                  example: Ring Road Central, Accra
+                notes:
+                  type: string
+                  example: Caller reports building fire on 3rd floor
+                priority:
+                  type: integer
+                  minimum: 1
+                  maximum: 3
+                  default: 1
+                  description: 1=Normal, 2=High, 3=Critical
+      responses:
+        '201':
+          description: Incident created and responder dispatched
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Incident' }
+        '403': { description: Forbidden — SYSTEM_ADMIN required }
+        '422': { description: Validation error }
+
+    get:
+      tags: [Incidents]
+      summary: List all incidents
+      description: Returns a paginated, filterable list of all incidents ordered by priority then date.
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/IncidentStatus' }
+        - in: query
+          name: type
+          schema: { $ref: '#/components/schemas/IncidentType' }
+      responses:
+        '200':
+          description: Incidents retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PaginatedIncidents' }
+
+  /incidents/open:
+    get:
+      tags: [Incidents]
+      summary: List all open incidents
+      description: Returns all incidents with status CREATED, DISPATCHED, or IN_PROGRESS, ordered by priority.
+      responses:
+        '200':
+          description: Open incidents retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Incident' }
+
+  /incidents/nearest/{lat}/{lng}/{type}:
+    get:
+      tags: [Incidents]
+      summary: Find nearest available responder
+      description: Returns the closest available responder of the given type using Haversine distance.
+      parameters:
+        - in: path
+          name: lat
+          required: true
+          schema: { type: number }
+          example: 5.6037
+        - in: path
+          name: lng
+          required: true
+          schema: { type: number }
+          example: -0.1870
+        - in: path
+          name: type
+          required: true
+          schema: { $ref: '#/components/schemas/ResponderType' }
+      responses:
+        '200':
+          description: Nearest responder found (or null if none available)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/NearestResponder' }
+
+  /incidents/{id}:
+    get:
+      tags: [Incidents]
+      summary: Get incident by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Incident retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Incident' }
+        '404': { description: Incident not found }
+
+  /incidents/{id}/status:
+    put:
+      tags: [Incidents]
+      summary: Update incident status
+      description: |
+        Updates incident status following the valid transition flow:
+        CREATED → DISPATCHED → IN_PROGRESS → RESOLVED.
+        Automatically frees the responder when RESOLVED or CANCELLED.
+        Publishes `incident.resolved` event when resolved.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/IncidentStatus' }
+                note:   { type: string, maxLength: 500 }
+      responses:
+        '200': { description: Status updated }
+        '400': { description: Invalid status transition }
+        '404': { description: Incident not found }
+
+  /incidents/{id}/assign:
+    put:
+      tags: [Incidents]
+      summary: Manually assign a responder
+      description: Overrides automatic dispatch to manually assign a specific available responder.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [responderId]
+              properties:
+                responderId: { type: string, format: uuid }
+      responses:
+        '200': { description: Responder assigned }
+        '403': { description: SYSTEM_ADMIN required }
+        '404': { description: Incident or responder not found }
+        '409': { description: Responder not available }
+
+  /responders:
+    get:
+      tags: [Responders]
+      summary: List all responders
+      parameters:
+        - in: query
+          name: type
+          schema: { $ref: '#/components/schemas/ResponderType' }
+      responses:
+        '200':
+          description: Responders retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Responder' }
+
+    post:
+      tags: [Responders]
+      summary: Register a new responder unit
+      description: Registers a new ambulance, police unit, or fire truck. Requires admin role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type, stationName, latitude, longitude]
+              properties:
+                name:        { type: string, example: "Ambulance Unit A1" }
+                type:        { $ref: '#/components/schemas/ResponderType' }
+                stationName: { type: string, example: "Korle Bu Teaching Hospital" }
+                latitude:    { type: number, example: 5.5360 }
+                longitude:   { type: number, example: -0.2278 }
+                address:     { type: string }
+                phone:       { type: string }
+                capacity:    { type: integer, default: 1 }
+      responses:
+        '201': { description: Responder registered }
+        '403': { description: Admin role required }
+
+  /responders/{id}/availability:
+    put:
+      tags: [Responders]
+      summary: Update responder availability status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/ResponderStatus' }
+      responses:
+        '200': { description: Status updated }
+        '404': { description: Responder not found }

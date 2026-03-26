@@ -1,0 +1,419 @@
+version: '3.9'
+
+# ─── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  emergency-net:
+    driver: bridge
+
+# ─── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  postgres_auth_data:
+  postgres_incident_data:
+  mongo_dispatch_data:
+  mongo_analytics_data:
+  mongo_ai_data:
+  redis_data:
+  rabbitmq_data:
+
+services:
+
+  # ─── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres-auth:
+    image: postgres:16-alpine
+    container_name: postgres-auth
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     auth_user
+      POSTGRES_PASSWORD: auth_password
+      POSTGRES_DB:       auth_db
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"      # Exposed for local dev / Prisma Studio
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-incident:
+    image: postgres:16-alpine
+    container_name: postgres-incident
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     incident_user
+      POSTGRES_PASSWORD: incident_password
+      POSTGRES_DB:       incident_db
+    volumes:
+      - postgres_incident_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U incident_user -d incident_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-dispatch:
+    image: mongo:7
+    container_name: mongo-dispatch
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: dispatch_user
+      MONGO_INITDB_ROOT_PASSWORD: dispatch_password
+      MONGO_INITDB_DATABASE:      dispatch_db
+    volumes:
+      - mongo_dispatch_data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-analytics:
+    image: mongo:7
+    container_name: mongo-analytics
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: analytics_user
+      MONGO_INITDB_ROOT_PASSWORD: analytics_password
+      MONGO_INITDB_DATABASE:      analytics_db
+    volumes:
+      - mongo_analytics_data:/data/db
+    ports:
+      - "27018:27017"
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo-ai:
+    image: mongo:7
+    container_name: mongo-ai
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ai_user
+      MONGO_INITDB_ROOT_PASSWORD: ai_password
+      MONGO_INITDB_DATABASE:      ai_db
+    volumes:
+      - mongo_ai_data:/data/db
+    ports:
+      - "27019:27017"
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: rmq_user
+      RABBITMQ_DEFAULT_PASS: rmq_password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI → http://localhost:15672
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ─── Microservices ────────────────────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV:                development
+      PORT:                    3001
+      SERVICE_NAME:            auth-service
+      DATABASE_URL:            postgresql://auth_user:auth_password@postgres-auth:5432/auth_db
+      REDIS_URL:               redis://redis:6379
+      JWT_ACCESS_SECRET:       ${JWT_ACCESS_SECRET:-change-me-access-secret-at-least-32-chars}
+      JWT_REFRESH_SECRET:      ${JWT_REFRESH_SECRET:-change-me-refresh-secret-at-least-32-chars}
+      JWT_ACCESS_EXPIRES_IN:   15m
+      JWT_REFRESH_EXPIRES_IN:  7d
+      BCRYPT_SALT_ROUNDS:      12
+      RATE_LIMIT_WINDOW_MS:    900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      AUTH_RATE_LIMIT_MAX:     10
+      ALLOWED_ORIGINS:         http://localhost:3000,http://localhost:3100
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-change-me-internal-secret}
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ─── Placeholders (uncomment as each service is built) ───────────────────────
+
+  incident-service:
+    build:
+      context: ./services/incident-service
+      dockerfile: Dockerfile
+    container_name: incident-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV:                development
+      PORT:                    3002
+      SERVICE_NAME:            incident-service
+      DATABASE_URL:            postgresql://incident_user:incident_password@postgres-incident:5432/incident_db
+      REDIS_URL:               redis://redis:6379
+      RABBITMQ_URL:            amqp://rmq_user:rmq_password@rabbitmq:5672
+      JWT_ACCESS_SECRET:       ${JWT_ACCESS_SECRET:-change-me-access-secret-at-least-32-chars}
+      AUTH_SERVICE_URL:        http://auth-service:3001
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-change-me-internal-secret}
+      RATE_LIMIT_WINDOW_MS:    900000
+      RATE_LIMIT_MAX_REQUESTS: 100
+      ALLOWED_ORIGINS:         http://localhost:3000,http://localhost:3100
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres-incident:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  dispatch-service:
+    build:
+      context: ./services/dispatch-service
+      dockerfile: Dockerfile
+    container_name: dispatch-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV:                  development
+      PORT:                      3003
+      SERVICE_NAME:              dispatch-service
+      MONGODB_URI:               mongodb://dispatch_user:dispatch_password@mongo-dispatch:27017/dispatch_db?authSource=admin
+      REDIS_URL:                 redis://redis:6379
+      RABBITMQ_URL:              amqp://rmq_user:rmq_password@rabbitmq:5672
+      JWT_ACCESS_SECRET:         ${JWT_ACCESS_SECRET:-change-me-access-secret-at-least-32-chars}
+      ALLOWED_ORIGINS:           http://localhost:3000,http://localhost:3100
+      RATE_LIMIT_WINDOW_MS:      900000
+      RATE_LIMIT_MAX_REQUESTS:   200
+      HEARTBEAT_TIMEOUT_SEC:     120
+      MAX_ROUTE_DEVIATION_METRES:500
+    ports:
+      - "3003:3003"
+    depends_on:
+      mongo-dispatch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV:                development
+      PORT:                    3004
+      SERVICE_NAME:            analytics-service
+      MONGODB_URI:             mongodb://analytics_user:analytics_password@mongo-analytics:27017/analytics_db?authSource=admin
+      REDIS_URL:               redis://redis:6379
+      RABBITMQ_URL:            amqp://rmq_user:rmq_password@rabbitmq:5672
+      JWT_ACCESS_SECRET:       ${JWT_ACCESS_SECRET:-change-me-access-secret-at-least-32-chars}
+      ALLOWED_ORIGINS:         http://localhost:3000,http://localhost:3100
+      RATE_LIMIT_WINDOW_MS:    900000
+      RATE_LIMIT_MAX_REQUESTS: 200
+      SLA_TARGET_SEC:          480
+      DASHBOARD_CACHE_TTL:     60
+    ports:
+      - "3004:3004"
+    depends_on:
+      mongo-analytics:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3004/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  ai-agent-service:
+    build:
+      context: ./services/ai-agent-service
+      dockerfile: Dockerfile
+    container_name: ai-agent-service
+    restart: unless-stopped
+    environment:
+      NODE_ENV:                           development
+      PORT:                               3005
+      SERVICE_NAME:                       ai-agent-service
+      MONGODB_URI:                        mongodb://ai_user:ai_password@mongo-ai:27017/ai_db?authSource=admin
+      REDIS_URL:                          redis://redis:6379
+      RABBITMQ_URL:                       amqp://rmq_user:rmq_password@rabbitmq:5672
+      JWT_ACCESS_SECRET:                  ${JWT_ACCESS_SECRET:-change-me-access-secret-at-least-32-chars}
+      INCIDENT_SERVICE_URL:               http://incident-service:3002
+      INTERNAL_SERVICE_SECRET:            ${INTERNAL_SERVICE_SECRET:-change-me-internal-secret}
+      GROQ_API_KEY:                       ${GROQ_API_KEY:-}
+      WHISPER_API_URL:                    http://whisper:9000
+      AUTO_SUBMIT_CONFIDENCE_THRESHOLD:   0.85
+      MIN_EXTRACTION_CONFIDENCE:          0.40
+      MAX_AUDIO_FILE_SIZE_MB:             25
+      AUDIO_UPLOAD_PATH:                  ./uploads/audio
+      ALLOWED_ORIGINS:                    http://localhost:3000,http://localhost:3100
+      RATE_LIMIT_WINDOW_MS:               900000
+      RATE_LIMIT_MAX_REQUESTS:            100
+      NOMINATIM_URL:                      https://nominatim.openstreetmap.org
+      NOMINATIM_USER_AGENT:               EmergencyResponsePlatform/1.0
+    volumes:
+      - ./services/ai-agent-service/uploads:/app/uploads
+    ports:
+      - "3005:3005"
+    depends_on:
+      mongo-ai:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3005/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ─── Optional: Whisper STT (uncomment to enable local AI transcription) ───────
+  # whisper:
+  #   image: onerahmet/openai-whisper-asr-webservice:latest-cpu
+  #   container_name: whisper
+  #   ports:
+  #     - "9000:9000"
+  #   environment:
+  #     ASR_MODEL: base     # tiny | base | small | medium | large
+  #   networks:
+  #     - emergency-net
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    restart: unless-stopped
+    environment:
+      NODE_ENV:                  development
+      PORT:                      3000
+      SERVICE_NAME:              api-gateway
+      REDIS_URL:                 redis://redis:6379
+      JWT_ACCESS_SECRET:         ${JWT_ACCESS_SECRET:-change-me-access-secret-at-least-32-chars}
+      INTERNAL_SERVICE_SECRET:   ${INTERNAL_SERVICE_SECRET:-change-me-internal-secret}
+      AUTH_SERVICE_URL:          http://auth-service:3001
+      INCIDENT_SERVICE_URL:      http://incident-service:3002
+      DISPATCH_SERVICE_URL:      http://dispatch-service:3003
+      ANALYTICS_SERVICE_URL:     http://analytics-service:3004
+      AI_AGENT_SERVICE_URL:      http://ai-agent-service:3005
+      ALLOWED_ORIGINS:           http://localhost:3100,http://localhost:3000
+      RATE_LIMIT_WINDOW_MS:      900000
+      RATE_LIMIT_MAX_REQUESTS:   200
+      AUTH_RATE_LIMIT_MAX:       20
+      CIRCUIT_BREAKER_THRESHOLD: 5
+      CIRCUIT_BREAKER_RESET_SEC: 30
+      RESPONSE_CACHE_TTL:        30
+    ports:
+      - "3000:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      incident-service:
+        condition: service_healthy
+      dispatch-service:
+        condition: service_healthy
+      analytics-service:
+        condition: service_healthy
+      ai-agent-service:
+        condition: service_healthy
+    networks:
+      - emergency-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

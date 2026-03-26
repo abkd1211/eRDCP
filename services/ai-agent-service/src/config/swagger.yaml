@@ -1,0 +1,356 @@
+openapi: 3.0.3
+info:
+  title: AI Call Agent Service API
+  description: |
+    AI-powered emergency call handling microservice for the National Emergency
+    Response and Dispatch Coordination Platform.
+
+    ## How It Works
+    1. Admin uploads an audio file (`.wav`, `.mp3`, `.m4a` etc.) via `POST /agent/call/ingest`
+    2. Service checks if a human operator is currently online (via Redis heartbeat)
+    3. **If operator online** → session recorded, call transferred to human
+    4. **If no operator** → AI pipeline runs automatically:
+       - **Whisper STT** transcribes the audio (supports auto language detection)
+       - **Rule-based NLP** extracts incident fields with per-field confidence scores
+       - **Nominatim geocoding** converts location text to GPS coordinates
+       - **High confidence** (≥0.85) → auto-submitted to Incident Service via RabbitMQ
+       - **Low confidence** → queued for human review
+
+    ## Supported Languages
+    The NLP engine has keyword dictionaries for:
+    - 🇬🇧 English
+    - 🇬🇭 Twi (Akan)
+    - 🇬🇭 Ga
+    - 🇬🇭 Hausa
+
+    ## Running Whisper Locally (Free)
+    ```bash
+    docker run -p 9000:9000 onerahmet/openai-whisper-asr-webservice:latest-cpu
+    ```
+    If Whisper is not running, the service falls back to a **simulated transcript**
+    for development/testing purposes.
+
+    ## Operator Presence
+    Frontend should call `POST /agent/operator/online` on login and
+    `POST /agent/operator/heartbeat` every 60 seconds to stay marked as available.
+    If no heartbeat for 2 minutes, operator is auto-marked offline.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3005
+    description: Local development
+
+tags:
+  - name: Call Ingestion
+    description: Audio upload and AI processing pipeline
+  - name: Session Management
+    description: View and review AI-processed call sessions
+  - name: Operator Presence
+    description: Track which operators are online
+  - name: Status
+    description: AI agent performance metrics
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    FieldConfidence:
+      type: object
+      properties:
+        value:      { type: string, nullable: true }
+        confidence: { type: number, minimum: 0, maximum: 1, example: 0.92 }
+        source:     { type: string, example: "keyword-match" }
+
+    CallSession:
+      type: object
+      properties:
+        sessionId:         { type: string, format: uuid }
+        callerPhone:       { type: string, example: "+233244123456" }
+        audioFileName:     { type: string, example: "call-1234567890.wav" }
+        status:
+          type: string
+          enum: [RECEIVED, TRANSCRIBING, EXTRACTING, PENDING_REVIEW, AUTO_SUBMITTED, REVIEWED, DISCARDED, FAILED]
+        detectedLanguage:  { type: string, example: "en" }
+        languageName:      { type: string, example: "English" }
+        operatorAvailable: { type: boolean }
+        handledBy:         { type: string, example: "ai" }
+        startedAt:         { type: string, format: date-time }
+        incidentServiceId: { type: string, nullable: true }
+
+    Transcription:
+      type: object
+      properties:
+        sessionId:       { type: string }
+        rawText:         { type: string, example: "Hello my name is Kofi Mensah..." }
+        cleanedText:     { type: string }
+        language:        { type: string, example: "en" }
+        confidenceScore: { type: number, example: 0.92 }
+        wordCount:       { type: integer, example: 45 }
+        whisperModel:    { type: string, example: "whisper-base" }
+        processingMs:    { type: integer, example: 4200 }
+
+    ExtractedIncident:
+      type: object
+      properties:
+        sessionId:        { type: string }
+        citizenName:      { $ref: '#/components/schemas/FieldConfidence' }
+        incidentType:     { $ref: '#/components/schemas/FieldConfidence' }
+        locationText:     { $ref: '#/components/schemas/FieldConfidence' }
+        latitude:         { $ref: '#/components/schemas/FieldConfidence' }
+        longitude:        { $ref: '#/components/schemas/FieldConfidence' }
+        notes:            { $ref: '#/components/schemas/FieldConfidence' }
+        urgencyLevel:     { $ref: '#/components/schemas/FieldConfidence' }
+        overallConfidence:{ type: number, example: 0.87 }
+        autoSubmitted:    { type: boolean }
+        manuallyEdited:   { type: boolean }
+        corrections:
+          type: array
+          items:
+            type: object
+            properties:
+              field:       { type: string }
+              oldValue:    { type: string }
+              newValue:    { type: string }
+              correctedBy: { type: string }
+              correctedAt: { type: string, format: date-time }
+
+    AgentStats:
+      type: object
+      properties:
+        totalSessions:       { type: integer, example: 47 }
+        autoSubmitted:       { type: integer, example: 38 }
+        pendingReview:       { type: integer, example: 5 }
+        reviewed:            { type: integer, example: 3 }
+        discarded:           { type: integer, example: 1 }
+        failed:              { type: integer, example: 0 }
+        autoSubmitRate:      { type: integer, example: 81, description: "Percentage" }
+        avgConfidence:       { type: number,  example: 0.88 }
+        operatorsOnline:     { type: integer, example: 2 }
+        whisperAvailable:    { type: boolean }
+        confidenceThreshold: { type: number,  example: 0.85 }
+        generatedAt:         { type: string,  format: date-time }
+
+    ApiSuccess:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data:    { type: object }
+
+    ApiError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        message: { type: string }
+        code:    { type: string }
+
+security:
+  - BearerAuth: []
+
+paths:
+  /agent/call/ingest:
+    post:
+      tags: [Call Ingestion]
+      summary: Ingest an emergency call audio file
+      description: |
+        Upload an audio recording of an emergency call. The service will:
+        1. Check operator availability
+        2. If no operator: run Whisper STT → NLP extraction → geocoding → auto-submit or queue for review
+        3. Return immediately with a sessionId — processing happens asynchronously
+
+        **Supported formats:** .wav, .mp3, .mp4, .m4a, .ogg, .flac, .webm
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: Audio file of the emergency call
+                callerPhone:
+                  type: string
+                  example: "+233244123456"
+                  description: Phone number of the caller (optional)
+      responses:
+        '202':
+          description: Call ingested — processing started asynchronously
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          sessionId: { type: string }
+                          status:    { type: string, enum: [OPERATOR_AVAILABLE, AI_PROCESSING] }
+                          message:   { type: string }
+        '400': { description: No audio file provided }
+        '403': { description: SYSTEM_ADMIN role required }
+
+  /agent/calls:
+    get:
+      tags: [Session Management]
+      summary: List call sessions pending review
+      description: Returns sessions with low confidence extractions that need human review.
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Sessions retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          data:  { type: array, items: { $ref: '#/components/schemas/CallSession' } }
+                          total: { type: integer }
+                          page:  { type: integer }
+                          pages: { type: integer }
+
+  /agent/calls/{id}:
+    get:
+      tags: [Session Management]
+      summary: Get full session detail
+      description: Returns the session, transcription, and NLP extraction with per-field confidence scores.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+          description: Session UUID
+      responses:
+        '200':
+          description: Session retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          session:       { $ref: '#/components/schemas/CallSession' }
+                          transcription: { $ref: '#/components/schemas/Transcription' }
+                          extraction:    { $ref: '#/components/schemas/ExtractedIncident' }
+        '404': { description: Session not found }
+
+  /agent/calls/{id}/review:
+    put:
+      tags: [Session Management]
+      summary: Review and submit an AI-extracted incident
+      description: |
+        Human operator reviews the NLP extraction, makes corrections if needed,
+        and confirms the incident. The corrected incident is submitted to the
+        Incident Service via RabbitMQ with a confidence score of 1.0 (human verified).
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                corrections:
+                  type: object
+                  description: Fields to correct — only include fields that need changing
+                  example:
+                    citizenName:  "Kofi Mensah"
+                    incidentType: "MEDICAL"
+                    locationText: "N1 Highway near Achimota, Accra"
+                    latitude:     "5.6089"
+                    longitude:    "-0.2311"
+      responses:
+        '200': { description: Session reviewed and incident submitted }
+        '404': { description: Session not found }
+
+  /agent/calls/{id}/replay:
+    post:
+      tags: [Session Management]
+      summary: Re-run NLP on an existing transcript
+      description: |
+        Deletes the previous NLP extraction and re-runs the extraction pipeline
+        on the saved transcript. Useful when NLP rules have been updated and
+        you want to reprocess old sessions.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: NLP replay complete }
+        '404': { description: Session not found }
+
+  /agent/status:
+    get:
+      tags: [Status]
+      summary: Get AI agent performance statistics
+      description: |
+        Returns overall AI agent metrics including auto-submit rate, average
+        confidence, operator count, and Whisper availability.
+      responses:
+        '200':
+          description: Agent stats retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AgentStats' }
+
+  /agent/operator/online:
+    post:
+      tags: [Operator Presence]
+      summary: Mark operator as online
+      description: |
+        Call this when an admin logs into the dashboard. Sets a 2-minute TTL
+        Redis key. Must be renewed via heartbeat to stay active.
+      responses:
+        '200': { description: Operator marked online }
+
+  /agent/operator/offline:
+    post:
+      tags: [Operator Presence]
+      summary: Mark operator as offline
+      description: Call this on logout or when the admin closes the dashboard.
+      responses:
+        '200': { description: Operator marked offline }
+
+  /agent/operator/heartbeat:
+    post:
+      tags: [Operator Presence]
+      summary: Renew operator online status
+      description: |
+        Frontend should call this every 60 seconds to keep the operator marked
+        as online. If no heartbeat for 2 minutes, the operator is automatically
+        removed from the online set and the AI agent takes over incoming calls.
+      responses:
+        '200': { description: Heartbeat received }
