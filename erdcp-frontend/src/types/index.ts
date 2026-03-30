@@ -31,10 +31,12 @@ export interface Vehicle {
 }
 
 export interface VehicleLive {
-  vehicleId: string; vehicleCode: string; type: VehicleType; driverName?: string;
+  vehicleId: string; vehicleCode: string; type: VehicleType; 
+  driverUserId?: string; driverName?: string;
   lat: number; lng: number; prevLat: number; prevLng: number;
   heading: string; headingDeg: number; speedKmh: number; batteryPct: number | null;
   etaSec: number | null; deviation: boolean; arrived: boolean; unresponsive: boolean;
+  status: VehicleStatus;
   incidentId?: string; lastUpdate: number;
 }
 
@@ -52,9 +54,14 @@ export interface AgentStatus { operatorsOnline: number; isAiActive: boolean; whi
 
 export interface Paginated<T> { data: T[]; total: number; page: number; pages: number; limit: number; }
 
-export interface LocationUpdatePayload { vehicleId: string; vehicleCode: string; type: VehicleType; driverName?: string; latitude: number; longitude: number; speedKmh: number; heading: string; batteryPct: number | null; timestamp: string; }
+export interface LocationUpdatePayload { 
+  vehicleId: string; vehicleCode: string; type: VehicleType; 
+  driverUserId?: string; driverName?: string; 
+  latitude: number; longitude: number; speedKmh: number; heading: string; batteryPct: number | null; 
+  status: VehicleStatus; incidentId?: string; timestamp: string; 
+}
 export interface EtaUpdatePayload { vehicleId: string; vehicleCode: string; etaSec: number; etaMinutes: number; }
 export interface RouteDeviationPayload { vehicleId: string; vehicleCode: string; deviationMetres: number; currentLocation: { latitude: number; longitude: number }; blocked?: boolean; }
 export interface VehicleArrivedPayload { vehicleId: string; vehicleCode: string; arrivalSec: number; arrivedAt: string; incidentId?: string; }
-export type AlertType = 'deviation' | 'arrived' | 'unresponsive' | 'incident_new';
+export type AlertType = 'deviation' | 'arrived' | 'unresponsive' | 'incident_new' | 'incident_unassigned';
 export interface Alert { id: string; type: AlertType; message: string; vehicleCode?: string; incidentId?: string; timestamp: number; }

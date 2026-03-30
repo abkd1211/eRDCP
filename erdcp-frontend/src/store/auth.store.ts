@@ -9,6 +9,7 @@ interface AuthState {
   refreshToken: string | null;
   hydrated:     boolean;
   setAuth:      (user: User, tokens: { accessToken: string; refreshToken: string }) => void;
+  updateTokens: (tokens: { accessToken: string; refreshToken: string }) => void;
   clearAuth:    () => void;
   setHydrated:  () => void;
 }
@@ -24,6 +25,11 @@ export const useAuth = create<AuthState>()(
         localStorage.setItem('accessToken',  tokens.accessToken);
         localStorage.setItem('refreshToken', tokens.refreshToken);
         set({ user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
+      },
+      updateTokens: (tokens) => {
+        localStorage.setItem('accessToken',  tokens.accessToken);
+        localStorage.setItem('refreshToken', tokens.refreshToken);
+        set({ accessToken: tokens.accessToken, refreshToken: tokens.refreshToken });
       },
       clearAuth: () => {
         localStorage.removeItem('accessToken');

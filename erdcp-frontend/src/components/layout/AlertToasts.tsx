@@ -5,16 +5,18 @@ import { useSocket } from '@/store/socket.store';
 import type { AlertType } from '@/types';
 
 const ALERT_ICON: Record<AlertType, React.ReactNode> = {
-  deviation:     <AlertTriangle size={14} />,
-  arrived:       <CheckCircle size={14} />,
-  unresponsive:  <WifiOff size={14} />,
-  incident_new:  <AlertCircle size={14} />,
+  deviation:           <AlertTriangle size={14} />,
+  arrived:             <CheckCircle size={14} />,
+  unresponsive:        <WifiOff size={14} />,
+  incident_new:        <AlertCircle size={14} />,
+  incident_unassigned: <AlertTriangle size={14} />,
 };
 const ALERT_COLOR: Record<AlertType, string> = {
-  deviation:    '#C97B1A',
-  arrived:      '#7CB518',
-  unresponsive: '#E8442A',
-  incident_new: '#1AB8C8',
+  deviation:           '#C97B1A',
+  arrived:             '#7CB518',
+  unresponsive:        '#E8442A',
+  incident_new:        '#1AB8C8',
+  incident_unassigned: '#E8442A', // Red for crucial warning
 };
 
 export function AlertToasts() {

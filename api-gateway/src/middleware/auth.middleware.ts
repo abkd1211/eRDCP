@@ -35,8 +35,14 @@ export const authenticate = async (
     const token   = authHeader.replace('Bearer ', '');
     const payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
 
-    // Check Redis blacklist
-    const blacklisted = await redisClient.get(REDIS_KEYS.blacklistedToken(payload.jti));
+    // Check Redis blacklist — handle Redis being down
+    let blacklisted: string | null = null;
+    try {
+      blacklisted = await redisClient.get(REDIS_KEYS.blacklistedToken(payload.jti));
+    } catch (err) {
+      logger.warn('Redis unreachable during blacklist check', { error: (err as Error).message });
+    }
+
     if (blacklisted) {
       res.status(401).json({ success: false, message: 'Token has been revoked', code: 'TOKEN_REVOKED' });
       return;
@@ -52,7 +58,12 @@ export const authenticate = async (
 
     next();
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : '';
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('Gateway auth error', { 
+      error: msg, 
+      tokenPrefix: req.headers.authorization?.slice(0, 15) 
+    });
+    
     if (msg.includes('expired')) {
       res.status(401).json({ success: false, message: 'Token has expired', code: 'TOKEN_EXPIRED' });
     } else {

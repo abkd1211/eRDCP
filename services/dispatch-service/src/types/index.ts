@@ -52,8 +52,12 @@ export interface IncidentDispatchedPayload {
   assigned_unit_id:   string;
   assigned_unit_type: string;
   responder_name:     string;
+  // Responder station coords (kept for backward compat)
   latitude:           number;
   longitude:          number;
+  // Incident scene coords — the actual driving destination
+  incident_latitude:  number;
+  incident_longitude: number;
   dispatched_at:      string;
 }
 

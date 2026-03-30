@@ -8,8 +8,17 @@ redisClient.on('connect',      () => logger.info('Redis connected'));
 redisClient.on('error',    (err) => logger.error('Redis error', { error: err.message }));
 redisClient.on('reconnecting', () => logger.warn('Redis reconnecting...'));
 
-export const connectRedis    = async () => { await redisClient.connect(); };
-export const disconnectRedis = async () => { await redisClient.disconnect(); };
+export const connectRedis = async () => {
+  try {
+    await redisClient.connect();
+  } catch (err) {
+    logger.error('Initial Redis connection failed', { error: (err as Error).message });
+    // Don't rethrow — allow the gateway to run in degraded mode
+  }
+};
+export const disconnectRedis = async () => {
+  if (redisClient.isOpen) await redisClient.disconnect();
+};
 
 export const REDIS_KEYS = {
   blacklistedToken:  (jti: string)  => `blacklist:${jti}`,

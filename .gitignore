@@ -30,6 +30,10 @@ Thumbs.db
 
 # Prisma
 prisma/migrations/
+# Track migrations but ignore local sqlite DBs if any
+*.db
+*.db-journal
+
 
 # Coverage
 coverage/

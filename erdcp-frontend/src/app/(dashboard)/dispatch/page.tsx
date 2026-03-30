@@ -25,6 +25,7 @@ export default function DispatchPage() {
   const isAdmin = user?.role === 'SYSTEM_ADMIN';
 
   const [typeFilter, setTypeFilter]   = useState('ALL');
+  const [showAll, setShowAll]         = useState(false);
   const [selectedVehicle, setSelV]    = useState<VehicleLive | null>(null);
   const [selectedIncident, setSelInc] = useState<Incident | null>(null);
   const [simSpeed, setSimSpeed]       = useState(1);
@@ -51,39 +52,63 @@ export default function DispatchPage() {
     refetchIntervalInBackground: false,
   });
 
-  // Merge initial + live
-  const allVehicles: VehicleLive[] = Object.values(liveVehicles).length > 0
-    ? Object.values(liveVehicles)
-    : initialVehicles.map((v) => ({
-        vehicleId:   v._id,
-        vehicleCode: v.vehicleCode,
-        type:        v.type,
-        driverName:  v.driverName,
-        lat:         v.currentLocation.latitude,
-        lng:         v.currentLocation.longitude,
-        prevLat:     v.currentLocation.latitude,
-        prevLng:     v.currentLocation.longitude,
-        heading:     v.heading ?? 'N',
-        headingDeg:  0,
-        speedKmh:    v.speedKmh ?? 0,
-        batteryPct:  v.batteryPct ?? null,
-        etaSec:      null,
-        deviation:   v.routeDeviation,
-        arrived:     false,
-        unresponsive:v.isUnresponsive,
-        incidentId:  v.currentIncidentId,
-        lastUpdate:  Date.now(),
-      }));
+  // 1. Convert initial vehicles into the VehicleLive shape
+  const baseVehicles: Record<string, VehicleLive> = {};
+  initialVehicles.forEach((v) => {
+    baseVehicles[v._id] = {
+      vehicleId:   v._id,
+      vehicleCode: v.vehicleCode,
+      type:        v.type,
+      driverName:  v.driverName,
+      lat:         v.currentLocation.latitude,
+      lng:         v.currentLocation.longitude,
+      prevLat:     v.currentLocation.latitude,
+      prevLng:     v.currentLocation.longitude,
+      heading:     v.heading ?? 'N',
+      headingDeg:  0,
+      speedKmh:    v.speedKmh ?? 0,
+      batteryPct:  v.batteryPct ?? null,
+      etaSec:      null,
+      deviation:   v.routeDeviation,
+      arrived:     false,
+      unresponsive:v.isUnresponsive,
+      status:      v.status,
+      incidentId:  v.currentIncidentId,
+      lastUpdate:  Date.now(),
+    };
+  });
 
-  const filteredVehicles = typeFilter === 'ALL'
-    ? allVehicles
-    : allVehicles.filter((v) => v.type === typeFilter);
+  // 2. Overlay live updates
+  const mergedVehicles = { ...baseVehicles, ...liveVehicles };
+  const allVehicles = Object.values(mergedVehicles);
+
+  const MISSION_STATUSES = ['DISPATCHED', 'EN_ROUTE', 'ON_SCENE', 'RETURNING'];
+
+  // 3. Filter for the MAP (Show assigned/active vehicles by default, all if toggled)
+  let mapVehicles = (typeFilter === 'ALL' ? allVehicles : allVehicles.filter((v) => v.type === typeFilter));
+  if (!showAll) {
+    mapVehicles = mapVehicles.filter(v => MISSION_STATUSES.includes(v.status));
+  }
+  
+  // 4. Filter for the SIDEBAR (Only show those on mission)
+  const sidebarVehicles = allVehicles.filter(v => MISSION_STATUSES.includes(v.status));
 
   // Role-filtered incidents
   const filteredIncidents = incidents.filter((i) => {
-    if (user?.role === 'HOSPITAL_ADMIN')     return i.incidentType === 'MEDICAL';
-    if (user?.role === 'POLICE_ADMIN')       return i.incidentType === 'CRIME' || i.incidentType === 'ACCIDENT';
-    if (user?.role === 'FIRE_SERVICE_ADMIN') return i.incidentType === 'FIRE';
+    // 1. Role filter
+    let roleOk = true;
+    if (user?.role === 'HOSPITAL_ADMIN')     roleOk = i.incidentType === 'MEDICAL';
+    else if (user?.role === 'POLICE_ADMIN')  roleOk = (i.incidentType === 'CRIME' || i.incidentType === 'ACCIDENT');
+    else if (user?.role === 'FIRE_SERVICE_ADMIN') roleOk = i.incidentType === 'FIRE';
+
+    if (!roleOk) return false;
+
+    // 2. Tab filter (e.g. SYSTEM_ADMIN clicks "Fire")
+    if (typeFilter === 'ALL') return true;
+    if (typeFilter === 'AMBULANCE')  return i.incidentType === 'MEDICAL';
+    if (typeFilter === 'POLICE')     return (i.incidentType === 'CRIME' || i.incidentType === 'ACCIDENT');
+    if (typeFilter === 'FIRE_TRUCK') return i.incidentType === 'FIRE';
+
     return true;
   });
 
@@ -117,7 +142,7 @@ export default function DispatchPage() {
             </span>
           </div>
           <span className="text-xs ml-auto font-mono" style={{ color: 'var(--text-faint)', fontFamily: 'JetBrains Mono, monospace' }}>
-            {filteredVehicles.length}v · {filteredIncidents.length}i
+            {sidebarVehicles.length}v · {filteredIncidents.length}i
           </span>
         </div>
 
@@ -139,7 +164,7 @@ export default function DispatchPage() {
         )}
 
         {/* Incident list */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {filteredIncidents.length === 0
             ? <p className="text-xs text-center py-10" style={{ color: 'var(--text-faint)' }}>No active incidents</p>
             : filteredIncidents.map((inc) => {
@@ -207,12 +232,35 @@ export default function DispatchPage() {
           </div>
         }>
           <DispatchMap
-            vehicles={filteredVehicles}
+            vehicles={mapVehicles}
             incidents={filteredIncidents}
-            onVehicleClick={(v) => { setSelV(v); setSelInc(null); }}
-            onIncidentClick={(i) => { setSelInc(i); setSelV(null); }}
+            onVehicleClick={(v) => { 
+              setSelV(v); 
+              setSelInc(null); 
+              (window as any)._selectedVehicleId = v.vehicleId;
+            }}
+            onIncidentClick={(i) => { 
+              setSelInc(i); 
+              setSelV(null); 
+              (window as any)._selectedVehicleId = null;
+            }}
             vehicleTypeFilter={typeFilter}
           />
+
+          {/* Map Overlay Controls */}
+          <div className="absolute top-4 right-4 flex flex-col gap-2">
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+                showAll 
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-lg' 
+                  : 'bg-[#1e2229]/80 text-[#9AA3AF] border-[#2e353f] hover:bg-[#2e353f] backdrop-blur-md'
+              }`}
+            >
+              <Zap size={14} className={showAll ? 'fill-current' : ''} />
+              {showAll ? 'Showing All Fleet' : 'Focus: Assigned Only'}
+            </button>
+          </div>
         </Suspense>
 
         {/* Connection status pill */}

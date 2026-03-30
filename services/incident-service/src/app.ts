@@ -9,6 +9,7 @@ import path from 'path';
 import { env } from './config/env';
 import logger from './config/logger';
 import incidentRoutes from './routes/incident.routes';
+import responderRoutes from './routes/responder.routes';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
 import { generalLimiter } from './middleware/rateLimit.middleware';
 
@@ -48,8 +49,7 @@ app.get('/health', (_req, res) => {
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/incidents', incidentRoutes);
-// Responders are nested under incidents router but also accessible at root
-app.use('/responders', incidentRoutes);
+app.use('/responders', responderRoutes);
 
 // ─── Swagger Docs ─────────────────────────────────────────────────────────────
 const swaggerDocument = YAML.load(path.join(__dirname, 'config/swagger.yaml'));

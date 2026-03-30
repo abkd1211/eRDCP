@@ -17,6 +17,10 @@ const bootstrap = async (): Promise<void> => {
     // ─── Start RabbitMQ consumers ─────────────────────────────────────────────
     await startConsumers();
 
+    // ─── Recover active simulations (after Rabbit/DB ready) ───────────────────
+    const dispatchService = (await import('./services/dispatch.service')).default;
+    await dispatchService.initSimulationRecovery();
+
     // ─── Start heartbeat monitor ──────────────────────────────────────────────
     startHeartbeatMonitor();
 
@@ -63,3 +67,4 @@ const bootstrap = async (): Promise<void> => {
 };
 
 bootstrap();
+

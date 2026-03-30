@@ -69,9 +69,15 @@ export default function HospitalAdminView() {
               </div>
               <StatusBadge status={r.status} />
               {r.status !== 'BUSY' && (
-                <button onClick={() => updateAvail.mutate({ id: r.id, status: r.status === 'AVAILABLE' ? 'OFFLINE' : 'AVAILABLE' })}
-                  className="btn btn-secondary text-xs px-3 py-1.5">
-                  {r.status === 'AVAILABLE' ? 'Set Offline' : 'Set Available'}
+                <button 
+                  onClick={() => {
+                    console.log('Toggling hospital responder status:', r.id, r.status);
+                    updateAvail.mutate({ id: r.id, status: r.status === 'AVAILABLE' ? 'OFFLINE' : 'AVAILABLE' });
+                  }}
+                  disabled={updateAvail.isPending}
+                  className="btn btn-secondary text-xs px-3 py-1.5 active:scale-95 transition-all"
+                >
+                  {updateAvail.isPending && updateAvail.variables?.id === r.id ? '...' : (r.status === 'AVAILABLE' ? 'Set Offline' : 'Set Available')}
                 </button>
               )}
               <button onClick={() => { setEditId(r.id); setBeds({ total: r.capacity, available: r.capacity }); }}

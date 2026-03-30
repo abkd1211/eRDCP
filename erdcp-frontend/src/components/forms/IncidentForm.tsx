@@ -36,7 +36,7 @@ export default function IncidentForm({ onClose, onSuccess }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<mapboxgl.Map | null>(null);
   const markerRef = useRef<mapboxgl.Marker | null>(null);
-  const searchTimeout = useRef<NodeJS.Timeout>();
+  const searchTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -91,13 +91,20 @@ export default function IncidentForm({ onClose, onSuccess }: Props) {
       });
     }, 150);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (mapInstance.current) {
+        mapInstance.current.remove();
+        mapInstance.current = null;
+        markerRef.current = null;
+      }
+    };
   }, [step, setValue]);
 
   // Geocoding search
   useEffect(() => {
-    clearTimeout(searchTimeout.current);
     if (!searchQuery.trim() || searchQuery.length < 3) { setSugg([]); return; }
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(async () => {
       try {
         const r = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(searchQuery)}.json?country=gh&access_token=${MAPBOX_TOKEN}&limit=5`);

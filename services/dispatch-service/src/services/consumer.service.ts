@@ -11,6 +11,8 @@ const RESPONDER_CREATED_QUEUE = 'dispatch.responder.created';
 export const startConsumers = async (): Promise<void> => {
   await consumeIncidentCreated();
   await consumeIncidentDispatched();
+  await consumeIncidentUnassigned();
+  await consumeIncidentResolved();
   await consumeResponderCreated();
   logger.info('RabbitMQ consumers started');
 };
@@ -52,11 +54,17 @@ const consumeIncidentDispatched = async (): Promise<void> => {
       try {
         const event   = JSON.parse(msg.content.toString());
         const payload = event.payload as IncidentDispatchedPayload;
-        logger.info('Received incident.dispatched', { eventId: event.event_id, incidentId: payload.incident_id });
+        logger.info('Received incident.dispatched — handoff to dispatchService', {
+          eventId: event.event_id,
+          payload: {
+            incident_id: payload.incident_id,
+            assigned_unit_id: payload.assigned_unit_id,
+          }
+        });
         await dispatchService.handleIncidentDispatched(payload);
         channel.ack(msg);
       } catch (err) {
-        logger.error('Failed to process incident.dispatched', { error: err });
+        logger.error('Failed to process incident.dispatched', { error: err, stack: (err as Error).stack });
         channel.nack(msg, false, false);
       }
     },
@@ -64,6 +72,59 @@ const consumeIncidentDispatched = async (): Promise<void> => {
   );
 
   logger.info(`Consumer started: ${CONSUME_QUEUES.INCIDENT_DISPATCHED}`);
+};
+
+const consumeIncidentUnassigned = async (): Promise<void> => {
+  const channel = getChannel();
+  if (!channel) { logger.error('RabbitMQ channel not ready'); return; }
+
+  await channel.consume(
+    CONSUME_QUEUES.INCIDENT_UNASSIGNED,
+    async (msg) => {
+      if (!msg) return;
+      try {
+        const event   = JSON.parse(msg.content.toString());
+        const payload = event.payload;
+        logger.warn('Received incident.unassigned — informing admins', { incidentId: payload.incident_id });
+        dispatchService.broadcastUnassignedIncident(payload);
+        channel.ack(msg);
+      } catch (err) {
+        logger.error('Failed to process incident.unassigned', { error: err });
+        channel.nack(msg, false, false);
+      }
+    },
+    { noAck: false }
+  );
+
+  logger.info(`Consumer started: ${CONSUME_QUEUES.INCIDENT_UNASSIGNED}`);
+};
+
+const consumeIncidentResolved = async (): Promise<void> => {
+  const channel = getChannel();
+  if (!channel) { logger.error('RabbitMQ channel not ready'); return; }
+
+  await channel.consume(
+    CONSUME_QUEUES.INCIDENT_RESOLVED,
+    async (msg) => {
+      if (!msg) return;
+      try {
+        const event   = JSON.parse(msg.content.toString());
+        const payload = event.payload;
+        logger.info('Received incident.resolved — triggering return trip', { 
+          eventId: event.event_id, 
+          incidentId: payload.incident_id 
+        });
+        await dispatchService.handleIncidentResolved(payload.incident_id);
+        channel.ack(msg);
+      } catch (err) {
+        logger.error('Failed to process incident.resolved', { error: err });
+        channel.nack(msg, false, false);
+      }
+    },
+    { noAck: false }
+  );
+
+  logger.info(`Consumer started: ${CONSUME_QUEUES.INCIDENT_RESOLVED}`);
 };
 
 // ─── Consume: responder.created ──────────────────────────────────────────────

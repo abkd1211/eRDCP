@@ -14,7 +14,13 @@ interface CircuitStatus {
 // ─── Record a failure for a service ──────────────────────────────────────────
 export const recordFailure = async (service: ServiceKey): Promise<void> => {
   const key    = REDIS_KEYS.circuitBreaker(service);
-  const stored = await redisClient.get(key);
+  let stored: string | null = null;
+  try {
+    stored = await redisClient.get(key);
+  } catch (err) {
+    logger.warn('Redis unreachable in recordFailure', { service, error: (err as Error).message });
+  }
+
   const status: CircuitStatus = stored
     ? JSON.parse(stored)
     : { state: 'CLOSED', failures: 0, lastFailure: null, openedAt: null };
@@ -28,13 +34,20 @@ export const recordFailure = async (service: ServiceKey): Promise<void> => {
     logger.error(`Circuit OPEN for ${service}`, { failures: status.failures });
   }
 
-  await redisClient.setEx(key, env.CIRCUIT_BREAKER_RESET_SEC * 10, JSON.stringify(status));
+  try {
+    await redisClient.setEx(key, env.CIRCUIT_BREAKER_RESET_SEC * 10, JSON.stringify(status));
+  } catch (err) {
+    // If Redis is down, we just can't track failures persistently
+  }
 };
 
 // ─── Record a success — reset failure count ───────────────────────────────────
 export const recordSuccess = async (service: ServiceKey): Promise<void> => {
   const key    = REDIS_KEYS.circuitBreaker(service);
-  const stored = await redisClient.get(key);
+  let stored: string | null = null;
+  try {
+    stored = await redisClient.get(key);
+  } catch { return; }
   if (!stored) return;
 
   const status: CircuitStatus = JSON.parse(stored);
@@ -42,15 +55,23 @@ export const recordSuccess = async (service: ServiceKey): Promise<void> => {
     status.failures = 0;
     status.state    = 'CLOSED';
     status.openedAt = null;
-    await redisClient.setEx(key, env.CIRCUIT_BREAKER_RESET_SEC * 10, JSON.stringify(status));
-    logger.info(`Circuit CLOSED for ${service}`);
+    try {
+      await redisClient.setEx(key, env.CIRCUIT_BREAKER_RESET_SEC * 10, JSON.stringify(status));
+      logger.info(`Circuit CLOSED for ${service}`);
+    } catch { /* Ignore */ }
   }
 };
 
 // ─── Check if a service is available ─────────────────────────────────────────
 export const isServiceAvailable = async (service: ServiceKey): Promise<boolean> => {
   const key    = REDIS_KEYS.circuitBreaker(service);
-  const stored = await redisClient.get(key);
+  let stored: string | null = null;
+  try {
+    stored = await redisClient.get(key);
+  } catch (err) {
+    // If Redis is down, we assume services are available to avoid platform-wide crash
+    return true; 
+  }
   if (!stored) return true; // No failures recorded — assume available
 
   const status: CircuitStatus = JSON.parse(stored);
@@ -62,7 +83,9 @@ export const isServiceAvailable = async (service: ServiceKey): Promise<boolean> 
     const resetMs   = env.CIRCUIT_BREAKER_RESET_SEC * 1000;
     if (Date.now() - openedAt > resetMs) {
       status.state = 'HALF_OPEN';
-      await redisClient.setEx(key, env.CIRCUIT_BREAKER_RESET_SEC * 10, JSON.stringify(status));
+      try {
+        await redisClient.setEx(key, env.CIRCUIT_BREAKER_RESET_SEC * 10, JSON.stringify(status));
+      } catch { /* Ignore */ }
       logger.info(`Circuit HALF_OPEN for ${service} — probing`);
       return true; // Allow one request through
     }

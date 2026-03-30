@@ -7,6 +7,13 @@ const bootstrap = async (): Promise<void> => {
   try {
     await connectRedis();
 
+    logger.info('Environment Check', {
+      jwtSecretLength: env.JWT_ACCESS_SECRET.length,
+      jwtSecretPrefix: env.JWT_ACCESS_SECRET.slice(0, 4),
+      internalSecretLength: env.INTERNAL_SERVICE_SECRET.length,
+      redisUrlHost: new URL(env.REDIS_URL).host
+    });
+
     const server = app.listen(env.PORT, () => {
       logger.info('🚀 API Gateway running', {
         port:        env.PORT,

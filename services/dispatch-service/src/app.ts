@@ -17,6 +17,10 @@ import { createSocketServer }                     from './services/socket.servic
 const app: Application = express();
 const httpServer       = createServer(app);
 
+// ─── Proxy ────────────────────────────────────────────────────────────────────
+// Necessary for rate limiting behind API Gateway
+app.set('trust proxy', 1);
+
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
@@ -47,6 +51,32 @@ app.get('/health', (_req, res) => {
     uptime:    process.uptime(),
     timestamp: new Date().toISOString(),
   });
+});
+
+// ─── Internal Route (incident-service → dispatch-service) ────────────────────
+// Triggers return-to-base for the vehicle identified by its incidentServiceId
+import { Vehicle } from './models/vehicle.model';
+import { startReturnSimulation } from './services/simulation.service';
+
+app.post('/internal/vehicles/return-by-responder/:responderId', async (req, res) => {
+  const secret = req.headers['x-internal-secret'];
+  if (secret !== env.INTERNAL_SERVICE_SECRET) {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
+    return;
+  }
+  try {
+    const vehicle = await Vehicle.findOne({ incidentServiceId: req.params.responderId });
+    if (!vehicle) {
+      res.status(404).json({ success: false, message: 'Vehicle not found' });
+      return;
+    }
+    if (vehicle.status === 'ON_SCENE' || vehicle.status === 'DISPATCHED' || vehicle.status === 'EN_ROUTE') {
+      await startReturnSimulation(vehicle._id.toString());
+    }
+    res.json({ success: true, message: 'Return-to-base triggered', vehicleId: vehicle._id.toString() });
+  } catch (err) {
+    res.status(500).json({ success: false, message: (err as Error).message });
+  }
 });
 
 // ─── API Routes ───────────────────────────────────────────────────────────────

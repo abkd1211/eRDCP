@@ -20,6 +20,7 @@ import {
 } from '../types';
 import {
   startSimulation,
+  startReturnSimulation,
   setSimulationIO,
 } from './simulation.service';
 
@@ -61,6 +62,8 @@ export class DispatchService {
         updatedAt: new Date(),
       },
       lastHeartbeatAt: new Date(),
+      homeLatitude:    dto.latitude,
+      homeLongitude:   dto.longitude,
     });
 
     logger.info('Vehicle registered', { vehicleId: vehicle._id.toString(), code: vehicle.vehicleCode });
@@ -432,6 +435,23 @@ export class DispatchService {
     logger.debug('Broadcast new incident to all admins', { incidentId: payload.incident_id });
   }
 
+  // Called when an incident.unassigned event arrives.
+  // Broadcasts to admins so the incident appears back on their map as available.
+  broadcastUnassignedIncident(payload: IncidentCreatedPayload): void {
+    this.io?.to('admins').emit('incident:new', {
+      incidentId:      payload.incident_id,
+      incidentType:    payload.incident_type,
+      latitude:        payload.latitude,
+      longitude:       payload.longitude,
+      citizenName:     payload.citizen_name,
+      status:          payload.status,
+      assignedUnitId:  payload.assigned_unit_id,
+      priority:        payload.priority,
+      createdAt:       payload.created_at,
+    });
+    logger.warn('Broadcast unassigned incident to all admins', { incidentId: payload.incident_id });
+  }
+
   // Broadcasts priority escalation when a linked report auto-escalates an incident.
   broadcastPriorityEscalation(incidentId: string, newPriority: number, reportCount: number): void {
     this.io?.to('admins').emit('incident:priority_escalated', {
@@ -447,29 +467,62 @@ export class DispatchService {
   // ═══════════════════════════════════════════════════════
 
   async handleIncidentDispatched(payload: IncidentDispatchedPayload): Promise<void> {
-    // Find the vehicle registered for this responder
-    const vehicle = await Vehicle.findOne({ incidentServiceId: payload.assigned_unit_id });
+    // 1. Find the vehicle registered for this responder
+    // Primary search: by incidentServiceId (UUID)
+    let vehicle = await Vehicle.findOne({ incidentServiceId: payload.assigned_unit_id });
+
+    if (!vehicle) {
+      // Fallback search: by stationName (robustness for dev/seed mismatches)
+      vehicle = await Vehicle.findOne({ stationName: payload.responder_name });
+      if (vehicle) {
+        logger.info('Matched vehicle by station name (ID fallback)', {
+          vehicleId:     vehicle._id.toString(),
+          stationName:   payload.responder_name,
+          newServiceId:  payload.assigned_unit_id,
+        });
+
+        // Update the ID on the fly to stabilize future lookups
+        vehicle.incidentServiceId = payload.assigned_unit_id;
+        await vehicle.save();
+      }
+    }
+
     if (!vehicle) {
       logger.warn('No vehicle found for dispatched responder', {
         assignedUnitId: payload.assigned_unit_id,
+        responderName:  payload.responder_name,
       });
       return;
+    }
+
+    // 2. Initialize location if currently at 0,0 (common after registration)
+    if (vehicle.currentLocation.latitude === 0 && vehicle.currentLocation.longitude === 0) {
+      logger.info('Initializing vehicle location from dispatch station coordinates', {
+        vehicleId: vehicle._id.toString(),
+        lat:       payload.latitude,
+        lng:       payload.longitude,
+      });
+      vehicle.currentLocation.latitude  = payload.latitude;
+      vehicle.currentLocation.longitude = payload.longitude;
+      vehicle.currentLocation.updatedAt = new Date();
+      await vehicle.save();
     }
 
     // Get current vehicle location for assignment origin
     const location = await this.getVehicleLocation(vehicle._id.toString());
 
-    // Create dispatch assignment
+    // Create dispatch assignment — destLatitude/Longitude must be the INCIDENT scene,
+    // not the responder station. The simulation drives to these coords.
     await DispatchAssignment.create({
-      vehicleId:      vehicle._id.toString(),
-      incidentId:     payload.incident_id,
-      driverUserId:   vehicle.driverUserId,
-      status:         'ASSIGNED',
-      assignedAt:     new Date(payload.dispatched_at),
+      vehicleId:       vehicle._id.toString(),
+      incidentId:      payload.incident_id,
+      driverUserId:    vehicle.driverUserId,
+      status:          'ASSIGNED',
+      assignedAt:      new Date(payload.dispatched_at),
       originLatitude:  location.latitude,
       originLongitude: location.longitude,
-      destLatitude:    payload.latitude,
-      destLongitude:   payload.longitude,
+      destLatitude:    payload.incident_latitude,
+      destLongitude:   payload.incident_longitude,
     });
 
     // Update vehicle status
@@ -493,17 +546,80 @@ export class DispatchService {
     // ── Start GPS simulation automatically ───────────────────────────────────
     // Uses Mapbox Directions API to fetch a real road route, then walks the
     // vehicle along it emitting live GPS pings — exactly like a real driver.
+    // Destination = incident scene, NOT the responder's station.
     startSimulation(
       vehicle._id.toString(),
       payload.incident_id,
       location.latitude,
       location.longitude,
-      payload.latitude,
-      payload.longitude,
+      payload.incident_latitude,
+      payload.incident_longitude,
       60  // base speed km/h — adjustable via /simulation/speed
     ).catch((err) =>
       logger.error('Failed to start simulation', { vehicleId: vehicle._id.toString(), error: err })
     );
+  }
+
+  // ─── Simulation Recovery ────────────────────────────────────────────────────
+  /**
+   * Called on service bootstrap. Scans for vehicles that were mid-mission
+   * when the service stopped and restarts their GPS simulations.
+   */
+  async initSimulationRecovery(): Promise<void> {
+    logger.info('Initializing simulation recovery...');
+    const activeVehicles = await Vehicle.find({
+      status: { $in: ['DISPATCHED', 'EN_ROUTE', 'RETURNING'] }
+    });
+
+    for (const vehicle of activeVehicles) {
+      try {
+        if (vehicle.status === 'RETURNING') {
+          await startReturnSimulation(vehicle._id.toString());
+        } else if (vehicle.currentIncidentId) {
+          // Find the assignment to get destination (incident) coordinates
+          const assignment = await DispatchAssignment.findOne({
+            vehicleId: vehicle._id.toString(),
+            incidentId: vehicle.currentIncidentId,
+            status: { $ne: 'COMPLETED' }
+          });
+
+          if (assignment) {
+            await startSimulation(
+              vehicle._id.toString(),
+              vehicle.currentIncidentId,
+              vehicle.currentLocation.latitude,
+              vehicle.currentLocation.longitude,
+              assignment.destLatitude,
+              assignment.destLongitude
+            );
+          }
+        }
+      } catch (err) {
+        logger.error('Failed to recover simulation', { vehicleId: vehicle._id, error: err });
+      }
+    }
+    logger.info('Simulation recovery complete', { recoveredCount: activeVehicles.length });
+  }
+
+  // ─── Return to Base ─────────────────────────────────────────────────────────
+  async handleIncidentResolved(incidentId: string): Promise<void> {
+    const vehicle = await Vehicle.findOne({ currentIncidentId: incidentId });
+    if (!vehicle) {
+      logger.warn('Received incident.resolved but no active vehicle found for this incident', { incidentId });
+      return;
+    }
+
+    logger.info('Incident resolved — triggering return to base', { 
+      vehicleId: vehicle._id, 
+      vehicleCode: vehicle.vehicleCode,
+      incidentId 
+    });
+
+    await this.triggerReturnToBase(vehicle._id.toString());
+  }
+
+  async triggerReturnToBase(vehicleId: string): Promise<void> {
+    await startReturnSimulation(vehicleId);
   }
 }
 

@@ -17,7 +17,8 @@ export const ROUTING_KEYS = {
 
 // Queues this service CONSUMES from
 export const CONSUME_QUEUES = {
-  AI_CALL_PROCESSED: 'incident.ai.call.processed',
+  AI_CALL_PROCESSED:      'incident.ai.call.processed',
+  INCIDENT_STATUS_UPDATE: 'incident.status.update',
 } as const;
 
 // ─── Connection State ─────────────────────────────────────────────────────────
@@ -41,6 +42,12 @@ export const connectRabbitMQ = async (): Promise<void> => {
     });
     await channel.bindQueue(CONSUME_QUEUES.AI_CALL_PROCESSED, EXCHANGE, 'ai.call.processed');
 
+    await channel.assertQueue(CONSUME_QUEUES.INCIDENT_STATUS_UPDATE, {
+      durable: true,
+      arguments: { 'x-dead-letter-exchange': DL_EXCHANGE },
+    });
+    await channel.bindQueue(CONSUME_QUEUES.INCIDENT_STATUS_UPDATE, EXCHANGE, 'incident.status.update');
+
     // Set prefetch — process one message at a time per consumer
     channel.prefetch(1);
 
@@ -57,7 +64,6 @@ export const connectRabbitMQ = async (): Promise<void> => {
     });
   } catch (err) {
     logger.error('Failed to connect to RabbitMQ', { error: err });
-    // Retry after 5 seconds
     setTimeout(connectRabbitMQ, 5000);
   }
 };

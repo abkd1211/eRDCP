@@ -18,9 +18,22 @@ export function IncidentTypeBadge({ type }: { type: IncidentType }) {
   return <Badge color={c.color} bg={c.bg}>{c.label}</Badge>;
 }
 
-export function StatusBadge({ status }: { status: IncidentStatus }) {
-  const c = STATUS_CONFIG[status];
-  return <Badge color={c.color} bg={`${c.color}18`}>{c.label}</Badge>;
+export function StatusBadge({ status }: { status: string }) {
+  // Try incident status first
+  let c = (STATUS_CONFIG as any)[status];
+  
+  // Fallbacks for Responder/Vehicle status if not in IncidentStatus
+  if (!c) {
+    if (status === 'AVAILABLE')  c = { label: 'Available',  color: '#7CB518' };
+    if (status === 'BUSY')       c = { label: 'Busy',       color: '#E8442A' };
+    if (status === 'OFFLINE')    c = { label: 'Offline',    color: '#5A6370' };
+    if (status === 'EN_ROUTE')   c = { label: 'En Route',   color: '#C97B1A' };
+    if (status === 'ON_SCENE')   c = { label: 'On Scene',   color: '#1AB8C8' };
+    if (status === 'RETURNING')  c = { label: 'Returning',  color: '#7CB518' };
+  }
+
+  if (!c) return <Badge>{status}</Badge>;
+  return <Badge color={c.color} bg={`${c.color}18`}>{c.label ?? status}</Badge>;
 }
 
 export function RoleBadge({ role }: { role: Role }) {

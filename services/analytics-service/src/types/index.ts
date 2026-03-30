@@ -115,7 +115,7 @@ export interface SlaReport {
   outsideSla:        number;
   complianceRate:    number;  // percentage
   slaTargetSec:      number;
-  byType:            Record<string, { total: number; withinSla: number; rate: number }>;
+  byType:            Array<{ type: string; total: number; withinSla: number; pct: number }>;
 }
 
 export interface DashboardSnapshot {

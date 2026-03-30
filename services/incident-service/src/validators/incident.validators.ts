@@ -89,6 +89,13 @@ export const updateResponderAvailabilitySchema = z.object({
   }),
 });
 
+// Helper to handle Express query params that might be parsed as arrays
+const ensureString = (val: unknown): string | undefined => {
+  if (Array.isArray(val)) val = val[0];
+  if (val === undefined || val === null || val === '') return undefined;
+  return String(val);
+};
+
 // ─── Nearest Responder Params ─────────────────────────────────────────────────
 export const nearestResponderSchema = z.object({
   params: z.object({
@@ -103,21 +110,29 @@ export const nearestResponderSchema = z.object({
 // ─── List Incidents Query ─────────────────────────────────────────────────────
 export const listIncidentsSchema = z.object({
   query: z.object({
-    page:   z.string().optional().transform(v => parseInt(v ?? '1')),
-    limit:  z.string().optional().transform(v => Math.min(parseInt(v ?? '20'), 100)),
-    status: z.nativeEnum(IncidentStatus).optional(),
-    type:   z.nativeEnum(IncidentType).optional(),
+    page:   z.preprocess(ensureString, z.string().optional().transform(v => parseInt(v ?? '1'))),
+    limit:  z.preprocess(ensureString, z.string().optional().transform(v => Math.min(parseInt(v ?? '20'), 100))),
+    status: z.preprocess(ensureString, z.nativeEnum(IncidentStatus).optional()),
+    type:   z.preprocess(ensureString, z.nativeEnum(IncidentType).optional()),
+  }),
+});
+
+// ─── List Responders Query ────────────────────────────────────────────────────
+export const listRespondersSchema = z.object({
+  query: z.object({
+    type:    z.preprocess(ensureString, z.nativeEnum(ResponderType).optional()),
+    ownOnly: z.preprocess(ensureString, z.string().optional().transform(v => v === 'true')),
   }),
 });
 
 // ─── Nearby Incidents ─────────────────────────────────────────────────────────
 export const nearbyIncidentsSchema = z.object({
   query: z.object({
-    lat:    z.string({ required_error: 'lat is required' })
-            .regex(/^-?\d+(\.\d+)?$/, 'Invalid latitude').transform(Number),
-    lng:    z.string({ required_error: 'lng is required' })
-            .regex(/^-?\d+(\.\d+)?$/, 'Invalid longitude').transform(Number),
-    radius: z.string().optional().transform(v => Math.min(parseInt(v ?? '200'), 2000)),
+    lat:    z.preprocess(ensureString, z.string({ required_error: 'lat is required' })
+            .regex(/^-?\d+(\.\d+)?$/, 'Invalid latitude')).transform(Number),
+    lng:    z.preprocess(ensureString, z.string({ required_error: 'lng is required' })
+            .regex(/^-?\d+(\.\d+)?$/, 'Invalid longitude')).transform(Number),
+    radius: z.preprocess(ensureString, z.string().optional().transform(v => Math.min(parseInt(v ?? '200'), 2000))),
   }),
 });
 

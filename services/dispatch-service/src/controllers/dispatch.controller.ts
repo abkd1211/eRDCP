@@ -44,11 +44,11 @@ export class DispatchController {
   updateVehicleLocation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       await dispatchService.processGpsPing({
-        vehicleId:  req.params.id as string,
-        latitude:   req.body.latitude,
-        longitude:  req.body.longitude,
-        speedKmh:   req.body.speedKmh,
-        heading:    req.body.heading,
+        vehicleId: req.params.id as string,
+        latitude: req.body.latitude,
+        longitude: req.body.longitude,
+        speedKmh: req.body.speedKmh,
+        heading: req.body.heading,
         batteryPct: req.body.batteryPct,
       });
       sendSuccess(res, 200, 'Location updated', null);
@@ -58,7 +58,7 @@ export class DispatchController {
   // GET /vehicles/:id/history
   getLocationHistory = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const limit   = Math.min(parseInt(req.query.limit as string ?? '100'), 500);
+      const limit = Math.min(parseInt(req.query.limit as string ?? '100'), 500);
       const id = req.params.id as string;
       const history = await dispatchService.getVehicleLocationHistory(id, limit);
       sendSuccess(res, 200, 'Location history retrieved', history);
@@ -80,6 +80,15 @@ export class DispatchController {
       const id = req.params.id as string;
       await dispatchService.completeTrip(id, req.body.incidentId);
       sendSuccess(res, 200, 'Trip completed and summary generated', null);
+    } catch (err) { next(err); }
+  };
+
+  // POST /vehicles/:id/return
+  returnToBase = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = req.params.id as string;
+      await dispatchService.triggerReturnToBase(id);
+      sendSuccess(res, 200, 'Return-to-base simulation started', null);
     } catch (err) { next(err); }
   };
 

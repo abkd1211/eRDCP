@@ -75,10 +75,13 @@ export const createSocketServer = (httpServer: HttpServer): SocketServer => {
 
     // ── Join global vehicles room (admins join on connect for live map) ────────
     const adminRoles = ['SYSTEM_ADMIN','HOSPITAL_ADMIN','POLICE_ADMIN','FIRE_SERVICE_ADMIN'];
-    if (socket.user?.role && adminRoles.includes(socket.user.role)) {
+    const role = socket.user?.role?.toUpperCase();
+    if (role && adminRoles.includes(role)) {
       socket.join('all-vehicles');
       socket.join('admins');
-      logger.debug('Admin joined all-vehicles + admins rooms', { role: socket.user.role });
+      logger.info('Admin joined all-vehicles + admins rooms', { role });
+    } else {
+      logger.warn('User did not join admin rooms', { role, userId: socket.user?.id });
     }
 
     // ── GPS Ping (from driver's phone/app) ───────────────────────────────────

@@ -40,17 +40,20 @@ export const useSocket = create<SocketState>((set, get) => ({
     });
 
     socket.on('disconnect', () => {
+      console.warn('Socket.io disconnected from Dispatch Service');
       set({ connected: false });
     });
 
     // location:update — smooth interpolation via prevLat/prevLng
     socket.on('location:update', (payload: LocationUpdatePayload) => {
+      console.log(`[Socket] location:update | vehicle: ${payload.vehicleCode} (${payload.vehicleId}) | incident: ${payload.incidentId} | status: ${payload.status}`);
       set((state) => {
         const existing = state.vehicles[payload.vehicleId];
         const updated: VehicleLive = {
           vehicleId:   payload.vehicleId,
           vehicleCode: payload.vehicleCode,
           type:        payload.type,
+          driverUserId:payload.driverUserId,
           driverName:  payload.driverName,
           lat:         payload.latitude,
           lng:         payload.longitude,
@@ -64,7 +67,8 @@ export const useSocket = create<SocketState>((set, get) => ({
           deviation:   existing?.deviation ?? false,
           arrived:     existing?.arrived ?? false,
           unresponsive:existing?.unresponsive ?? false,
-          incidentId:  existing?.incidentId,
+          status:      payload.status,
+          incidentId:  payload.incidentId,
           lastUpdate:  Date.now(),
         };
         return { vehicles: { ...state.vehicles, [payload.vehicleId]: updated } };
@@ -147,6 +151,21 @@ export const useSocket = create<SocketState>((set, get) => ({
         timestamp: Date.now(),
       };
       set((state) => ({ alerts: [alert, ...state.alerts].slice(0, 10) }));
+    });
+
+    // incident:unassigned — No available responder within radius
+    socket.on('incident:unassigned', (payload: any) => {
+      const id = `alert-${++alertCounter}`;
+      const alert: Alert = {
+        id, type: 'incident_unassigned',
+        message: `UNASSIGNED: No responder within 50km for ${payload.incidentType} incident.`,
+        incidentId: payload.incidentId,
+        timestamp: Date.now(),
+      };
+      set((state) => ({ alerts: [alert, ...state.alerts].slice(0, 10) }));
+      if (typeof window !== 'undefined' && (window as any).playSirenChime) {
+        (window as any).playSirenChime();
+      }
     });
 
     set({ socket });

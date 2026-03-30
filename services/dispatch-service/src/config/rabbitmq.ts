@@ -16,6 +16,8 @@ export const ROUTING_KEYS = {
 export const CONSUME_QUEUES = {
   INCIDENT_CREATED:    'dispatch.incident.created',
   INCIDENT_DISPATCHED: 'dispatch.incident.dispatched',
+  INCIDENT_UNASSIGNED: 'dispatch.incident.unassigned',
+  INCIDENT_RESOLVED:   'dispatch.incident.resolved',
 } as const;
 
 let connection: ChannelModel | null = null;
@@ -40,6 +42,8 @@ export const connectRabbitMQ = async (): Promise<void> => {
     // Bind queues to exchange
     await channel.bindQueue(CONSUME_QUEUES.INCIDENT_CREATED,    EXCHANGE, 'incident.created');
     await channel.bindQueue(CONSUME_QUEUES.INCIDENT_DISPATCHED, EXCHANGE, 'incident.dispatched');
+    await channel.bindQueue(CONSUME_QUEUES.INCIDENT_UNASSIGNED, EXCHANGE, 'incident.unassigned');
+    await channel.bindQueue(CONSUME_QUEUES.INCIDENT_RESOLVED,   EXCHANGE, 'incident.resolved');
 
     channel.prefetch(1);
 

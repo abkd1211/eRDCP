@@ -82,3 +82,31 @@ export function priorityLabel(p: number): string {
 export function priorityColor(p: number): string {
   return p >= 3 ? '#E8442A' : p === 2 ? '#C97B1A' : '#9AA3AF';
 }
+
+// ─── Data Export ──────────────────────────────────────────────────────────────
+export function downloadCsv(filename: string, data: any[]) {
+  if (!data || !data.length) return;
+  
+  const headers = Object.keys(data[0]);
+  const rows = data.map(obj => 
+    headers.map(header => {
+      const val = obj[header];
+      // Escape quotes and wrap in quotes if contains comma
+      const stringVal = val === null || val === undefined ? '' : String(val);
+      const escaped = stringVal.replace(/"/g, '""');
+      return `"${escaped}"`;
+    }).join(',')
+  );
+
+  const csvContent = [headers.map(h => `"${h}"`).join(','), ...rows].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `${filename}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

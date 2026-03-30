@@ -22,6 +22,10 @@ export interface IVehicle extends Document {
   currentLocation:   IVehicleLocation;
   currentIncidentId: string | null;
 
+  // Station info for "Return to Base"
+  homeLatitude:      number;
+  homeLongitude:     number;
+
   // Telemetry
   speedKmh:          number;
   heading:           string;
@@ -54,6 +58,9 @@ const VehicleSchema = new Schema<IVehicle>(
     },
 
     currentIncidentId: { type: String, default: null },
+
+    homeLatitude:  { type: Number, default: 0 },
+    homeLongitude: { type: Number, default: 0 },
 
     // Telemetry
     speedKmh:   { type: Number, default: 0 },

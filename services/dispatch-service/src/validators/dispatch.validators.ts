@@ -51,12 +51,19 @@ export const completeTripSchema = z.object({
   }),
 });
 
+// Helper to handle Express query params that might be parsed as arrays
+const ensureString = (val: unknown): string | undefined => {
+  if (Array.isArray(val)) val = val[0];
+  if (val === undefined || val === null || val === '') return undefined;
+  return String(val);
+};
+
 // ─── List Vehicles Query ──────────────────────────────────────────────────────
 // Use loose string validation — the service layer handles invalid values gracefully
 export const listVehiclesSchema = z.object({
   query: z.object({
-    type:   z.string().optional(),
-    status: z.string().optional(),
+    type:   z.preprocess(ensureString, z.string().optional()),
+    status: z.preprocess(ensureString, z.string().optional()),
   }).optional(),
 });
 
@@ -66,6 +73,6 @@ export const locationHistorySchema = z.object({
     id: z.string().min(1, 'Vehicle ID is required'),
   }),
   query: z.object({
-    limit: z.string().optional().transform(v => Math.min(parseInt(v ?? '100'), 500)),
+    limit: z.preprocess(ensureString, z.string().optional().transform(v => Math.min(parseInt(v ?? '100'), 500))),
   }),
 });

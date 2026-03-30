@@ -342,7 +342,7 @@ export class IncidentService {
     if (cached) return JSON.parse(cached);
 
     // Base filter — must be available
-    const baseWhere: Prisma.ResponderWhereInput = { type, status: ResponderStatus.AVAILABLE };
+    const baseWhere: Record<string, unknown> = { type, status: ResponderStatus.AVAILABLE };
 
     // For AMBULANCE: also require at least 1 available bed
     // If no hospital has updated their beds (null), we still include them
@@ -355,7 +355,7 @@ export class IncidentService {
     }
 
     const availableResponders = await prisma.responder.findMany({
-      where: baseWhere,
+      where: baseWhere as any,
     });
 
     if (availableResponders.length === 0) {
@@ -478,6 +478,9 @@ export class IncidentService {
     ]);
 
     // Publish incident.dispatched event
+    // NOTE: latitude/longitude are the responder station coords (backward compat).
+    // incident_latitude/longitude are the SCENE coords — the simulation uses these
+    // as the driving destination so the vehicle actually goes to the incident.
     const payload: IncidentDispatchedPayload = {
       incident_id:        incidentId,
       assigned_unit_id:   responderId,
@@ -485,6 +488,8 @@ export class IncidentService {
       responder_name:     responder.name,
       latitude:           responder.latitude,
       longitude:          responder.longitude,
+      incident_latitude:  updated.latitude,
+      incident_longitude: updated.longitude,
       dispatched_at:      new Date().toISOString(),
     };
     await publishEvent(ROUTING_KEYS.INCIDENT_DISPATCHED, payload);
@@ -670,7 +675,9 @@ export class IncidentService {
       },
     });
 
-    // Log the capacity snapshot for analytics using raw query
+  
+
+    // Use raw query to insert log since Prisma client may not be regenerated yet
     await prisma.$executeRaw`
       INSERT INTO hospital_capacity_logs
         (id, responder_id, hospital_id, station_name, total_beds, available_beds, updated_by)
@@ -713,6 +720,7 @@ export class IncidentService {
     });
     return hospitals;
   }
+
 
   // ─── Update Responder Location ────────────────────────────────────────────────
   // Allows service admins to correct or update their station's GPS coordinates.

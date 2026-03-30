@@ -2,10 +2,10 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, RadialBarChart, RadialBar, PieChart, Pie, Cell } from 'recharts';
-import { Clock, CheckCircle2, AlertTriangle, Activity } from 'lucide-react';
+import { Clock, CheckCircle2, AlertTriangle, Activity, Download } from 'lucide-react';
 import { analyticsApi } from '@/lib/services';
 import { StatCard, Skeleton } from '@/components/ui';
-import { formatSec, INCIDENT_CONFIG } from '@/lib/utils';
+import { formatSec, INCIDENT_CONFIG, downloadCsv } from '@/lib/utils';
 
 const PERIODS = ['today','week','month','year'] as const;
 type Period = typeof PERIODS[number];
@@ -33,6 +33,24 @@ export default function AnalyticsPage() {
   // Type donut data
   const typeData = Object.entries(dash?.byType ?? {}).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
 
+  const handleDownload = () => {
+    if (!dash) return;
+    
+    // Prepare report data
+    const reportData = [
+      { Category: 'OVERALL', Metric: 'Total Incidents', Value: dash.totalIncidents },
+      { Category: 'OVERALL', Metric: 'Avg Dispatch (sec)', Value: times?.avgDispatchSec ?? 0 },
+      { Category: 'OVERALL', Metric: 'Avg Arrival (sec)', Value: times?.avgArrivalSec ?? 0 },
+      { Category: 'SLA',     Metric: 'Compliance %', Value: slaVal.toFixed(2) },
+      // Add regional data
+      ...(regions ?? []).map(r => ({ Category: 'REGION', Metric: r.region, Value: r.count })),
+      // Add top responders
+      ...(topR ?? []).map(r => ({ Category: 'RESPONDER', Metric: r.responderName, Value: `Dispatches: ${r.totalDispatch}, SLA: ${r.slaCompliance}%` }))
+    ];
+
+    downloadCsv(`ERDCP-Analytics-Report-${period}-${new Date().toISOString().split('T')[0]}`, reportData);
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Period selector */}
@@ -51,6 +69,16 @@ export default function AnalyticsPage() {
             </button>
           ))}
         </div>
+
+        <button 
+          onClick={handleDownload}
+          disabled={!dash}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all bg-[#1AB8C8]/10 text-[#1AB8C8] border-[#1AB8C8]/30 hover:bg-[#1AB8C8]/20 disabled:opacity-30"
+          style={{ fontFamily: 'Syne, sans-serif' }}
+        >
+          <Download size={14} />
+          Download Report
+        </button>
       </div>
 
       {/* Stat cards */}

@@ -350,7 +350,12 @@ export class AnalyticsService {
       outsideSla:      totalOutside,
       complianceRate:  total > 0 ? Math.round((totalWithin / total) * 100) : 100,
       slaTargetSec:    env.SLA_TARGET_SEC,
-      byType:          typeMap,
+      byType:          Object.entries(typeMap).map(([type, stats]) => ({
+        type,
+        total:     stats.total,
+        withinSla: stats.withinSla,
+        pct:       stats.rate,
+      })),
     };
 
     await redisClient.setEx(REDIS_KEYS.slaReport(), REDIS_TTL.standard, JSON.stringify(report));
