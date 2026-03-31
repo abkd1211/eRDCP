@@ -87,21 +87,8 @@ router.get(
 );
 
 // ─── Responders ───────────────────────────────────────────────────────────────
-// IMPORTANT: Static routes (/responders, /responders/hospitals) MUST come
-// before parameterized routes (/responders/:id/...) to avoid Express matching
-// "hospitals" as an :id value.
-
-router.get(
-  '/responders',
-  incidentController.listResponders
-);
-
-router.post(
-  '/responders',
-  authorise('SYSTEM_ADMIN', 'HOSPITAL_ADMIN', 'POLICE_ADMIN', 'FIRE_SERVICE_ADMIN'),
-  validate(createResponderSchema),
-  incidentController.createResponder
-);
+// NOTE: Responders are now primary handled in responder.routes.ts
+// The routes below were redundant and have been removed to avoid conflict.
 
 // ─── Hospital Capacity (static — must be BEFORE /responders/:id) ─────────────
 router.get(
