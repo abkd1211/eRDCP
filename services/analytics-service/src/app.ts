@@ -87,7 +87,13 @@ const swaggerDocument = YAML.load(swaggerFilePath);
 
 // Expose raw spec for Gateway Hub
 app.get('/analytics/swagger.yaml', (_req, res) => {
-  res.sendFile(swaggerFilePath);
+  res.setHeader('Content-Type', 'text/yaml');
+  res.sendFile(swaggerFilePath, (err) => {
+    if (err) {
+      console.error('Failed to send swagger.yaml:', err);
+      res.status(500).json({ success: false, message: 'Could not load API specification' });
+    }
+  });
 });
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
