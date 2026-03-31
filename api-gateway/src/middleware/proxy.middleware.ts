@@ -88,9 +88,14 @@ export const proxyTo = (serviceKey: ServiceKey) =>
       }
 
       // Forward response
+      const contentType = upstream.headers['content-type'];
+      if (contentType) {
+        res.setHeader('Content-Type', contentType);
+      }
+      
       res.setHeader('X-Correlation-ID', req.correlationId ?? '');
       res.setHeader('X-Served-By', service.name);
-      res.status(upstream.status).json(upstream.data);
+      res.status(upstream.status).send(upstream.data);
 
     } catch (err: any) {
       await recordFailure(serviceKey);
