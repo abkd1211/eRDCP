@@ -56,19 +56,23 @@ export const authenticate = async (
     req.headers['x-user-role']  = payload.role;
     req.headers['x-correlation-id'] = req.correlationId;
 
+    // Diagnostic Log (rarely to avoid spam)
+    if (Math.random() < 0.01) {
+      logger.info(`[AUTH DEBUG] Secret in use (first 4): ${env.JWT_ACCESS_SECRET.slice(0, 4)}...`);
+    }
+
     next();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error('Gateway auth error', { 
+    const code = msg.includes('expired') ? 'TOKEN_EXPIRED' : 'INVALID_TOKEN';
+    
+    logger.error(`Gateway auth failure [${code}]`, { 
       error: msg, 
-      tokenPrefix: req.headers.authorization?.slice(0, 15) 
+      tokenPrefix: req.headers.authorization?.slice(0, 20),
+      secretPrefix: env.JWT_ACCESS_SECRET.slice(0, 4)
     });
     
-    if (msg.includes('expired')) {
-      res.status(401).json({ success: false, message: 'Token has expired', code: 'TOKEN_EXPIRED' });
-    } else {
-      res.status(401).json({ success: false, message: 'Invalid token', code: 'INVALID_TOKEN' });
-    }
+    res.status(401).json({ success: false, message: msg.includes('expired') ? 'Token has expired' : 'Invalid token', code });
   }
 };
 

@@ -165,15 +165,24 @@ router.get('/gateway/info', authenticate, (_req: Request, res: Response) => {
 });
 
 // GATEWAY DEBUG: Returns public IP and headers (for IP detection troubleshooting)
-router.get('/gateway/debug', (_req: Request, res: Response) => {
+router.get('/gateway/debug', (req: Request, res: Response) => {
+  const env = process.env;
+  const filteredHeaders = { ...req.headers };
+  delete filteredHeaders['authorization'];
+
+  const internalSecretHash = env.INTERNAL_SERVICE_SECRET ? env.INTERNAL_SERVICE_SECRET.slice(0, 3) + '...' + env.INTERNAL_SERVICE_SECRET.slice(-2) : 'MISSING';
+  const jwtSecretHash      = env.JWT_ACCESS_SECRET      ? env.JWT_ACCESS_SECRET.slice(0, 3)      + '...' + env.JWT_ACCESS_SECRET.slice(-2)      : 'MISSING';
+
   res.json({
-    success: true,
-    data: {
-      ip:       _req.ip,
-      ips:      _req.ips,
-      headers:  _req.headers,
-      method:   _req.method,
-      protocol: _req.protocol,
+    status: 'active',
+    timestamp: new Date().toISOString(),
+    clientIp: req.ip,
+    headers: filteredHeaders,
+    trustProxy: req.app.get('trust proxy'),
+    diagnostics: {
+      internalSecret: internalSecretHash,
+      jwtSecret:      jwtSecretHash,
+      env:            env.NODE_ENV,
     }
   });
 });

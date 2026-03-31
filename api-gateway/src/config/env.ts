@@ -9,7 +9,7 @@ const envSchema = z.object({
 
   REDIS_URL:    z.string().default('redis://localhost:6379'),
 
-  JWT_ACCESS_SECRET:       z.string().min(32),
+  JWT_ACCESS_SECRET:       z.string().min(32).default('erdcp-jwt-access-secret-2026-fallback-at-least-32-chars'),
   INTERNAL_SERVICE_SECRET: z.string().min(1),
 
   AUTH_SERVICE_URL:      z.string().default('http://localhost:3001'),

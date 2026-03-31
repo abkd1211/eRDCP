@@ -11,7 +11,7 @@ const envSchema = z.object({
   REDIS_URL:    z.string().default('redis://localhost:6379'),
   RABBITMQ_URL: z.string().default('amqp://localhost:5672'),
 
-  JWT_ACCESS_SECRET:       z.string().default('dev-secret-at-least-32-chars-long-for-safety-locally'),
+  JWT_ACCESS_SECRET:       z.string().min(32).default('erdcp-jwt-access-secret-2026-fallback-at-least-32-chars'),
   INTERNAL_SERVICE_SECRET: z.string().min(1).default('erdcp-internal-secret-2026'),
 
   ALLOWED_ORIGINS:         z.string().default('https://e-rdcp.vercel.app,http://localhost:3000,http://localhost:3100'),
