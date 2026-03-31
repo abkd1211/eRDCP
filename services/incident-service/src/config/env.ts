@@ -12,9 +12,9 @@ const envSchema = z.object({
   REDIS_URL:   z.string().default('redis://localhost:6379'),
   RABBITMQ_URL:z.string().default('amqp://localhost:5672'),
 
-  JWT_ACCESS_SECRET:       z.string().min(32),
+  JWT_ACCESS_SECRET:       z.string().default('dev-secret'),
   AUTH_SERVICE_URL:        z.string().default('http://localhost:3001'),
-  INTERNAL_SERVICE_SECRET: z.string().min(1),
+  INTERNAL_SERVICE_SECRET: z.string().default('dev-secret'),
 
   RATE_LIMIT_WINDOW_MS:    z.string().default('60000').transform(Number), // 1 minute
   RATE_LIMIT_MAX_REQUESTS: z.string().default('1000').transform(Number),

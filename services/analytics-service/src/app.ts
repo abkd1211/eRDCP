@@ -59,6 +59,11 @@ app.use(morgan('combined', {
 // ─── Rate Limiting ─────────────────────────────────────────────────────────────
 app.use(generalLimiter);
 
+// ─── Root Metadata ────────────────────────────────────────────────────────────
+app.get('/', (_req, res) => {
+  res.json({ status: 'active', service: env.SERVICE_NAME, info: 'Use /analytics for API endpoints' });
+});
+
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.status(200).json({
