@@ -12,7 +12,9 @@ export const ROUTING_KEYS = {
   INCIDENT_DISPATCHED: 'incident.dispatched',
   INCIDENT_RESOLVED:   'incident.resolved',
   INCIDENT_UPDATED:    'incident.updated',
+  INCIDENT_STATUS_UPDATE: 'incident.status.update',
   RESPONDER_CREATED:   'responder.created',
+  HOSPITAL_CAPACITY_UPDATED: 'hospital.capacity.updated',
 } as const;
 
 // Queues this service CONSUMES from

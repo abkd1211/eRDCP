@@ -52,9 +52,22 @@ app.use(cors({
 }));
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
-// Large limit for audio file forwarding through the gateway
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Skip body parsing for streaming routes (multipart/form-data)
+app.use((req, res, next) => {
+  if (req.path === '/agent/call/ingest') {
+    next();
+  } else {
+    express.json({ limit: '50mb' })(req, res, next);
+  }
+});
+
+app.use((req, res, next) => {
+  if (req.path === '/agent/call/ingest') {
+    next();
+  } else {
+    express.urlencoded({ extended: true, limit: '50mb' })(req, res, next);
+  }
+});
 
 // ─── Correlation ID ───────────────────────────────────────────────────────────
 app.use(correlationId);

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authenticate, optionalAuth, requireRole } from '../middleware/auth.middleware';
-import { proxyTo } from '../middleware/proxy.middleware';
+import { proxyTo, proxyStream } from '../middleware/proxy.middleware';
 import { authLimiter, strictLimiter } from '../middleware/rateLimit.middleware';
 import { checkAllServices } from '../services/health.service';
 import { getAllCircuitStatuses } from '../services/circuitBreaker.service';
@@ -122,7 +122,7 @@ router.get('/analytics/hospital-capacity', authenticate,
 // AI AGENT SERVICE — :3005
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/agent/status', authenticate, proxyTo('agent'));
-router.post('/agent/call/ingest', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));
+router.post('/agent/call/ingest', authenticate, requireRole('SYSTEM_ADMIN'), proxyStream('agent'));
 router.get('/agent/calls', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));
 router.get('/agent/calls/:id', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));
 router.put('/agent/calls/:id/review', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));

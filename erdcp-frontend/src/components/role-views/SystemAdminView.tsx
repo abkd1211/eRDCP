@@ -1,12 +1,15 @@
 'use client';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Clock, CheckCircle2, Activity, Users } from 'lucide-react';
-import { analyticsApi } from '@/lib/services';
+import { AlertTriangle, Clock, CheckCircle2, Activity, Users, PlusCircle, Building2, Ambulance } from 'lucide-react';
+import { analyticsApi, responderApi } from '@/lib/services';
 import { StatCard, IncidentTypeBadge, StatusBadge } from '@/components/ui';
+import UnitCreationModal from '@/components/modals/UnitCreationModal';
 import { formatSec, formatRelative, INCIDENT_CONFIG } from '@/lib/utils';
 import { RadialBarChart, RadialBar, PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 export default function SystemAdminView() {
+  const [modalOpen, setModalOpen] = useState(false);
   const { data: dash, isLoading } = useQuery({
     queryKey: ['analytics-dashboard'],
     queryFn: analyticsApi.getDashboard,
@@ -20,6 +23,29 @@ export default function SystemAdminView() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header with actions */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold" style={{ fontFamily: 'Syne, sans-serif' }}>System Overview</h2>
+          <p className="text-xs text-white/50">Real-time status of national emergency coordination</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setModalOpen(true)}
+            className="btn py-2 px-4 bg-white/5 border border-white/10 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-white/10 transition-all"
+            style={{ fontFamily: 'Syne, sans-serif' }}
+          >
+            <PlusCircle size={14} /> Register Unit
+          </button>
+        </div>
+      </div>
+
+      <UnitCreationModal 
+        isOpen={modalOpen} 
+        onClose={() => setModalOpen(false)} 
+        role="SYSTEM_ADMIN" 
+      />
+
       {/* Stat cards */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
         <StatCard label="Total Incidents"  value={dash?.totalIncidents  ?? 0} icon={<AlertTriangle size={18}/>} accentColor="#E8442A" loading={isLoading} />
@@ -58,7 +84,18 @@ export default function SystemAdminView() {
                     <Cell key={entry.name} fill={INCIDENT_CONFIG[entry.name as keyof typeof INCIDENT_CONFIG]?.color ?? '#9AA3AF'} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ background: 'var(--surface-hi)', border: '1px solid var(--border-strong)', borderRadius: 8, fontSize: 12 }} />
+                <Tooltip 
+                  formatter={(value: number, name: string) => [value, INCIDENT_CONFIG[name as keyof typeof INCIDENT_CONFIG]?.label ?? name]}
+                  contentStyle={{ 
+                    background: '#121212', 
+                    border: '1px solid rgba(255,255,255,0.1)', 
+                    borderRadius: 12, 
+                    fontSize: 12,
+                    fontWeight: 'bold',
+                    fontFamily: 'Syne, sans-serif'
+                  }} 
+                  itemStyle={{ color: '#fff' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           ) : (

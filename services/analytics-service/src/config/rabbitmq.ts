@@ -14,6 +14,7 @@ export const CONSUME_QUEUES = {
   LOCATION_UPDATED:    'analytics.location.updated',
   TRIP_COMPLETED:      'analytics.trip.completed',
   VEHICLE_UNRESPONSIVE:'analytics.vehicle.unresponsive',
+  HOSPITAL_CAPACITY_UPDATED: 'analytics.hospital.capacity.updated',
 } as const;
 
 let connection: ChannelModel | null = null;
@@ -35,6 +36,7 @@ export const connectRabbitMQ = async (): Promise<void> => {
       [CONSUME_QUEUES.LOCATION_UPDATED,     'location.updated'],
       [CONSUME_QUEUES.TRIP_COMPLETED,       'trip.completed'],
       [CONSUME_QUEUES.VEHICLE_UNRESPONSIVE, 'vehicle.unresponsive'],
+      [CONSUME_QUEUES.HOSPITAL_CAPACITY_UPDATED, 'hospital.capacity.updated'],
     ];
 
     for (const [queue, routingKey] of bindings) {

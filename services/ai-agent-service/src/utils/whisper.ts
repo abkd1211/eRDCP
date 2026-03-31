@@ -21,29 +21,35 @@ const transcribeWithGroq = async (filePath: string): Promise<WhisperResult> => {
   const groq         = new Groq({ apiKey: env.GROQ_API_KEY });
   const audioStream  = fs.createReadStream(filePath);
 
-  const response = await groq.audio.transcriptions.create({
-    file:            audioStream,
-    model:           'whisper-large-v3',
-    response_format: 'verbose_json',
-    language:        'en',   // set to auto-detect if needed
-  });
+  try {
+    const response = await groq.audio.transcriptions.create({
+      file:            audioStream,
+      model:           'whisper-large-v3',
+      response_format: 'verbose_json',
+      // No language specified = auto-detect (Ga, Twi, Hausa, etc supported by Whisper v3)
+    });
 
-  const processingMs = Date.now() - startTime;
+    const processingMs = Date.now() - startTime;
+    const resAny = response as any;
 
-  logger.info('Groq Whisper transcription complete', {
-    processingMs,
-    language:   (response as unknown as Record<string, unknown>).language ?? 'en',
-    textLength: response.text.length,
-  });
+    logger.info('Groq Whisper transcription complete', {
+      processingMs,
+      language:   resAny.language ?? 'detect',
+      textLength: response.text.length,
+    });
 
-  return {
-    text:         response.text,
-    language:     String((response as unknown as Record<string, unknown>).language ?? 'en'),
-    duration:     Number((response as unknown as Record<string, unknown>).duration ?? 0),
-    confidence:   0.95,  // Groq Whisper large-v3 is highly accurate
-    model:        'whisper-large-v3-groq',
-    processingMs,
-  };
+    return {
+      text:         response.text,
+      language:     String(resAny.language ?? 'en'),
+      duration:     Number(resAny.duration ?? 0),
+      confidence:   0.95,  // Groq Whisper large-v3 is state-of-the-art
+      model:        resAny.model ?? 'whisper-large-v3-groq',
+      processingMs,
+    };
+  } catch (err) {
+    logger.error('Groq API Error', { error: err instanceof Error ? err.message : String(err) });
+    throw err;
+  }
 };
 
 // ─── Transcribe using local Whisper Docker API ────────────────────────────────

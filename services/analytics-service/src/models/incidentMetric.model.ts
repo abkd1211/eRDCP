@@ -3,6 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IIncidentMetric extends Document {
   incidentId:       string;
   incidentType:     string;
+  citizenName:      string;
   region:           string;        // derived from lat/lng (e.g. "Accra", "Kumasi")
   latitude:         number;
   longitude:        number;
@@ -35,6 +36,7 @@ const IncidentMetricSchema = new Schema<IIncidentMetric>(
   {
     incidentId:       { type: String, required: true, unique: true },
     incidentType:     { type: String, required: true },
+    citizenName:      { type: String, default: 'Unknown' },
     region:           { type: String, default: 'Unknown' },
     latitude:         { type: Number, required: true },
     longitude:        { type: Number, required: true },

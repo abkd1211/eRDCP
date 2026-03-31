@@ -80,11 +80,11 @@ export interface VehicleUnresponsivePayload {
 
 // ─── Analytics Response Types ─────────────────────────────────────────────────
 export interface ResponseTimeStats {
-  avgDispatchTimeSec:   number;
-  avgArrivalTimeSec:    number;
-  avgResolutionTimeSec: number;
-  minDispatchTimeSec:   number;
-  maxDispatchTimeSec:   number;
+  avgDispatchSec:       number;
+  avgArrivalSec:        number;
+  avgResolutionSec:     number;
+  minDispatchSec:       number;
+  maxDispatchSec:       number;
   totalIncidents:       number;
   period:               string;
 }
@@ -113,35 +113,38 @@ export interface SlaReport {
   totalIncidents:    number;
   withinSla:         number;
   outsideSla:        number;
-  complianceRate:    number;  // percentage
+  compliancePct:     number;  // percentage
   slaTargetSec:      number;
   byType:            Array<{ type: string; total: number; withinSla: number; pct: number }>;
 }
 
 export interface DashboardSnapshot {
-  generatedAt:       string;
   totalIncidents:    number;
   openIncidents:     number;
   resolvedToday:     number;
-  avgResponseTimeSec:number;
-  slaComplianceRate: number;
+  avgResponseSec:    number;
+  slaCompliancePct:  number;
   activeVehicles:    number;
   unresponsiveVehicles: number;
-  incidentsByType:   Record<string, number>;
-  incidentsByStatus: Record<string, number>;
+  byType:            Record<string, number>;
+  byStatus:          Record<string, number>;
   topResponders:     Array<{
     responderId:       string;
     responderName:     string;
     responderType:     string;
-    totalDispatches:   number;
-    avgDispatchTimeSec:number;
-    slaComplianceRate: number;
+    totalDispatch:     number;
+    avgArrivalSec:     number;
+    slaCompliance:     number;
+    streakDays:        number;
   }>;
-  recentActivity:    Array<{
-    incidentId:   string;
-    type:         string;
+  recentIncidents:   Array<{
+    id:           string;
+    incidentType: string;
+    citizenName:  string;
     region:       string;
+    priority:     number;
     status:       string;
     createdAt:    Date;
+    responder?:   { name: string };
   }>;
 }

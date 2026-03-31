@@ -686,6 +686,15 @@ export class IncidentService {
          ${responder.stationName}, ${dto.totalBeds}, ${dto.availableBeds}, ${updatedBy})
     `;
 
+    // Publish capacity update event
+    await publishEvent(ROUTING_KEYS.HOSPITAL_CAPACITY_UPDATED, {
+      responder_id:   responderId,
+      station_name:   responder.stationName,
+      total_beds:     dto.totalBeds,
+      available_beds: dto.availableBeds,
+      updated_at:     new Date().toISOString(),
+    });
+
     // Invalidate responder cache
     await redisClient.del(REDIS_KEYS.responders(responder.type));
     await redisClient.del(REDIS_KEYS.responders('ALL'));

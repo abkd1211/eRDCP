@@ -16,6 +16,7 @@ export const startConsumers = async (): Promise<void> => {
     [CONSUME_QUEUES.INCIDENT_RESOLVED,    (p) => analyticsService.handleIncidentResolved(p as never)],
     [CONSUME_QUEUES.TRIP_COMPLETED,       (p) => analyticsService.handleTripCompleted(p as never)],
     [CONSUME_QUEUES.VEHICLE_UNRESPONSIVE, (p) => analyticsService.handleVehicleUnresponsive(p as never)],
+    [CONSUME_QUEUES.HOSPITAL_CAPACITY_UPDATED, (p) => analyticsService.handleHospitalCapacityUpdated(p as never)],
   ];
 
   for (const [queue, handler] of consumers) {

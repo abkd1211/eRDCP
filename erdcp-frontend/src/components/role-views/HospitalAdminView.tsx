@@ -5,10 +5,12 @@ import { Ambulance, Edit2, Loader2 } from 'lucide-react';
 import { responderApi, analyticsApi, incidentApi } from '@/lib/services';
 import { StatCard, StatusBadge } from '@/components/ui';
 import { formatSec, formatRelative } from '@/lib/utils';
+import UnitCreationModal from '@/components/modals/UnitCreationModal';
 import type { Responder, ResponderStatus } from '@/types';
 
 export default function HospitalAdminView() {
   const qc = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
   const { data: responders = [], isLoading: rLoading } = useQuery({
     queryKey: ['responders', 'AMBULANCE', 'own'],
     queryFn: () => responderApi.list({ type: 'AMBULANCE', ownOnly: true }),
@@ -55,7 +57,21 @@ export default function HospitalAdminView() {
       <div className="card">
         <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
           <p className="label">Ambulance Fleet</p>
+          <button 
+            onClick={() => setModalOpen(true)}
+            className="text-[10px] font-bold py-1 px-2.5 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-all uppercase tracking-wider"
+            style={{ fontFamily: 'Syne, sans-serif' }}
+          >
+            Register Ambulance
+          </button>
         </div>
+
+        <UnitCreationModal 
+          isOpen={modalOpen} 
+          onClose={() => setModalOpen(false)} 
+          role="HOSPITAL_ADMIN" 
+          stationId={responders[0]?.id} // Use the first station as default if available
+        />
         {responders.length === 0
           ? <p className="px-4 py-8 text-center text-xs" style={{ color: 'var(--text-faint)' }}>No units registered yet</p>
           : responders.map((r: Responder) => (

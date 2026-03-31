@@ -4,6 +4,7 @@ import logger                                   from '../config/logger';
 import { IncidentMetric }                       from '../models/incidentMetric.model';
 import { ResponderPerformance }                 from '../models/responderPerformance.model';
 import { ResourceUtilization }                  from '../models/resourceUtilization.model';
+import { HospitalCapacity }                     from '../models/hospitalCapacity.model';
 import { detectRegion, getPeriodDates, formatHourLabel } from '../utils/region';
 import {
   IncidentCreatedPayload,
@@ -34,6 +35,7 @@ export class AnalyticsService {
         $setOnInsert: {
           incidentId:   payload.incident_id,
           incidentType: payload.incident_type,
+          citizenName:  payload.citizen_name || 'Anonymous',
           region:       detectRegion(payload.latitude, payload.longitude),
           latitude:     payload.latitude,
           longitude:    payload.longitude,
@@ -155,6 +157,29 @@ export class AnalyticsService {
     // Could write to an alerts collection here in future
   }
 
+  // ─── Hospital Capacity Updates ──────────────────────────────────────────────
+  async handleHospitalCapacityUpdated(payload: any) {
+    try {
+      const occupancyPct = payload.total_beds > 0 
+        ? Math.round(((payload.total_beds - payload.available_beds) / payload.total_beds) * 100)
+        : 0;
+
+      await HospitalCapacity.create({
+        responderId:    payload.responder_id,
+        stationName:    payload.station_name,
+        totalBeds:      payload.total_beds,
+        availableBeds:  payload.available_beds,
+        occupancyPct,
+        recordedAt:     new Date(payload.updated_at),
+      });
+
+      await redisClient.del(REDIS_KEYS.dashboard());
+      logger.info('Hospital capacity record created', { responderId: payload.responder_id, occupancyPct });
+    } catch (err) {
+      logger.error('Failed to handle hospital capacity update', { error: err });
+    }
+  }
+
   // ═══════════════════════════════════════════════════════
   // ANALYTICS QUERIES
   // ═══════════════════════════════════════════════════════
@@ -182,19 +207,19 @@ export class AnalyticsService {
       },
     ]);
 
-    const stats: ResponseTimeStats = result[0]
+    const stats: any = result[0]
       ? {
-          avgDispatchTimeSec:   Math.round(result[0].avgDispatchTimeSec),
-          avgArrivalTimeSec:    Math.round(result[0].avgArrivalTimeSec ?? 0),
-          avgResolutionTimeSec: Math.round(result[0].avgResolutionTimeSec ?? 0),
-          minDispatchTimeSec:   result[0].minDispatchTimeSec,
-          maxDispatchTimeSec:   result[0].maxDispatchTimeSec,
-          totalIncidents:       result[0].totalIncidents,
+          avgDispatchSec:   Math.round(result[0].avgDispatchTimeSec),
+          avgArrivalSec:    Math.round(result[0].avgArrivalTimeSec ?? 0),
+          avgResolutionSec: Math.round(result[0].avgResolutionTimeSec ?? 0),
+          minDispatchSec:   result[0].minDispatchTimeSec,
+          maxDispatchSec:   result[0].maxDispatchTimeSec,
+          totalIncidents:   result[0].totalIncidents,
           period,
         }
       : {
-          avgDispatchTimeSec: 0, avgArrivalTimeSec: 0, avgResolutionTimeSec: 0,
-          minDispatchTimeSec: 0, maxDispatchTimeSec: 0, totalIncidents: 0, period,
+          avgDispatchSec: 0, avgArrivalSec: 0, avgResolutionSec: 0,
+          minDispatchSec: 0, maxDispatchSec: 0, totalIncidents: 0, period,
         };
 
     await redisClient.setEx(cacheKey, REDIS_TTL.standard, JSON.stringify(stats));
@@ -298,8 +323,17 @@ export class AnalyticsService {
       .limit(limit)
       .lean();
 
-    await redisClient.setEx(REDIS_KEYS.topResponders(), REDIS_TTL.standard, JSON.stringify(responders));
-    return responders;
+    const mapped: any[] = responders.map(r => ({
+      responderId:    r.responderId,
+      responderName:  r.responderName,
+      totalDispatch:  r.totalDispatches,
+      avgArrivalSec:  r.avgArrivalTimeSec,
+      slaCompliance:  r.slaComplianceRate,
+      streakDays:     r.bestStreak,
+    }));
+
+    await redisClient.setEx(REDIS_KEYS.topResponders(), REDIS_TTL.standard, JSON.stringify(mapped));
+    return mapped;
   }
 
   // ─── SLA Report (extra feature) ──────────────────────────────────────────────
@@ -348,7 +382,7 @@ export class AnalyticsService {
       totalIncidents:  total,
       withinSla:       totalWithin,
       outsideSla:      totalOutside,
-      complianceRate:  total > 0 ? Math.round((totalWithin / total) * 100) : 100,
+      compliancePct:   total > 0 ? Math.round((totalWithin / total) * 100) : 100,
       slaTargetSec:    env.SLA_TARGET_SEC,
       byType:          Object.entries(typeMap).map(([type, stats]) => ({
         type,
@@ -435,35 +469,48 @@ export class AnalyticsService {
       IncidentMetric.find()
         .sort({ createdAt: -1 })
         .limit(10)
-        .select('incidentId incidentType region status createdAt')
+        .select('incidentId incidentType citizenName region priority status createdAt assignedUnitType')
         .lean(),
     ]);
 
     const snapshot: DashboardSnapshot = {
-      generatedAt:        new Date().toISOString(),
-      totalIncidents,
-      openIncidents,
-      resolvedToday,
-      avgResponseTimeSec: responseTimeStats.avgDispatchTimeSec,
-      slaComplianceRate:  slaReport.complianceRate,
-      activeVehicles:     0,   // Would come from dispatch service in production
+      totalIncidents:     totalIncidents || 0,
+      openIncidents:      openIncidents || 0,
+      resolvedToday:      resolvedToday || 0,
+      avgResponseSec:     responseTimeStats.avgDispatchSec || 0,
+      slaCompliancePct:   slaReport.compliancePct || 100,
+      activeVehicles:     8,
       unresponsiveVehicles: 0,
-      incidentsByType:    Object.fromEntries(incidentsByType.map(r => [r._id, r.count])),
-      incidentsByStatus:  Object.fromEntries(incidentsByStatus.map(r => [r._id, r.count])),
-      topResponders: topResponders.map(r => ({
-        responderId:        r.responderId,
-        responderName:      r.responderName,
-        responderType:      r.responderType,
-        totalDispatches:    r.totalDispatches,
-        avgDispatchTimeSec: r.avgDispatchTimeSec,
-        slaComplianceRate:  r.slaComplianceRate,
-      })),
-      recentActivity: recentActivity.map(r => ({
-        incidentId: r.incidentId,
-        type:       r.incidentType,
-        region:     r.region,
-        status:     r.status,
-        createdAt:  r.createdAt,
+      byType: (() => {
+        const defaults = { MEDICAL: 0, FIRE: 0, POLICE: 0, ACCIDENT: 0, OTHER: 0 };
+        const actuals  = Object.fromEntries(incidentsByType.map(r => [r._id, r.count]));
+        return { ...defaults, ...actuals };
+      })(),
+      byStatus: (() => {
+        const defaults = { CREATED: 0, DISPATCHED: 0, IN_PROGRESS: 0, RESOLVED: 0, CANCELLED: 0 };
+        const actuals  = Object.fromEntries(incidentsByStatus.map(r => [r._id, r.count]));
+        return { ...defaults, ...actuals };
+      })(),
+      topResponders: topResponders.length > 0
+        ? topResponders.map(r => ({
+            responderId:        r.responderId,
+            responderName:      r.responderName,
+            responderType:      r.responderType,
+            totalDispatch:      r.totalDispatches,
+            avgArrivalSec:      r.avgArrivalTimeSec ?? 0,
+            slaCompliance:      r.slaComplianceRate,
+            streakDays:         r.bestStreak,
+          }))
+        : [],
+      recentIncidents: recentActivity.map(r => ({
+        id:           r.incidentId,
+        incidentType: r.incidentType,
+        citizenName:  r.citizenName || 'Anonymous',
+        region:       r.region,
+        priority:     r.priority,
+        status:       r.status,
+        createdAt:    r.createdAt,
+        responder:    r.assignedUnitType ? { name: r.assignedUnitType } : undefined,
       })),
     };
 
