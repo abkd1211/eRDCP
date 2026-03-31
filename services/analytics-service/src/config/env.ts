@@ -14,8 +14,8 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32),
 
   ALLOWED_ORIGINS:         z.string().default('https://e-rdcp.vercel.app,http://localhost:3000,http://localhost:3100'),
-  RATE_LIMIT_WINDOW_MS:    z.string().default('900000').transform(Number),
-  RATE_LIMIT_MAX_REQUESTS: z.string().default('200').transform(Number),
+  RATE_LIMIT_WINDOW_MS:    z.string().default('60000').transform(Number), // 1 minute
+  RATE_LIMIT_MAX_REQUESTS: z.string().default('1000').transform(Number),
 
   SLA_TARGET_SEC:      z.string().default('480').transform(Number),
   DASHBOARD_CACHE_TTL: z.string().default('60').transform(Number),

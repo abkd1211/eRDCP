@@ -14,8 +14,8 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32),
 
   ALLOWED_ORIGINS:         z.string().default('http://localhost:3000,http://localhost:3100'),
-  RATE_LIMIT_WINDOW_MS:    z.string().default('900000').transform(Number),
-  RATE_LIMIT_MAX_REQUESTS: z.string().default('200').transform(Number),
+  RATE_LIMIT_WINDOW_MS:    z.string().default('60000').transform(Number), // 1 minute
+  RATE_LIMIT_MAX_REQUESTS: z.string().default('2000').transform(Number), // Higher for WebSocket traffic
 
   HEARTBEAT_TIMEOUT_SEC:     z.string().default('120').transform(Number),
   MAX_ROUTE_DEVIATION_METRES:z.string().default('500').transform(Number),

@@ -12,6 +12,10 @@ import { errorHandler, notFoundHandler }from './middleware/error.middleware';
 
 const app: Application = express();
 
+// ─── Trust Proxy ─────────────────────────────────────────────────────────────
+// Required for rate limiting to work correctly behind Render/Load Balancers
+app.set('trust proxy', 1);
+
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },

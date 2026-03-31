@@ -14,6 +14,9 @@ import { generalLimiter } from './middleware/rateLimit.middleware';
 
 const app: Application = express();
 
+// ─── Trust Proxy ─────────────────────────────────────────────────────────────
+app.set('trust proxy', 1);
+
 // ─── Security ────────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({

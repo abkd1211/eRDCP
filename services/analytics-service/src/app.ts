@@ -14,6 +14,9 @@ import { generalLimiter }                from './middleware/rateLimit.middleware
 
 const app: Application = express();
 
+// ─── Trust Proxy ─────────────────────────────────────────────────────────────
+app.set('trust proxy', 1);
+
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
@@ -64,6 +67,8 @@ app.get('/health', (_req, res) => {
     version:   '1.0.0',
     uptime:    process.uptime(),
     timestamp: new Date().toISOString(),
+    RATE_LIMIT_WINDOW_MS:    env.RATE_LIMIT_WINDOW_MS,
+    RATE_LIMIT_MAX_REQUESTS: env.RATE_LIMIT_MAX_REQUESTS,
   });
 });
 
