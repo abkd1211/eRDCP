@@ -10,4 +10,5 @@ export const generalLimiter = rateLimit({
   legacyHeaders:   false,
   handler: (_req: Request, res: Response) =>
     sendError(res, 429, 'Too many requests. Please try again later.', undefined, 'RATE_LIMIT_EXCEEDED'),
+  skip: (req) => req.method === 'OPTIONS',
 });

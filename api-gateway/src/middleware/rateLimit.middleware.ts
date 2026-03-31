@@ -16,6 +16,7 @@ export const generalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders:   false,
   handler:         errorResponse,
+  skip:            (req) => req.method === 'OPTIONS',
 });
 
 export const authLimiter = rateLimit({
@@ -24,6 +25,7 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders:   false,
   handler:         errorResponse,
+  skip:            (req) => req.method === 'OPTIONS',
 });
 
 export const strictLimiter = rateLimit({

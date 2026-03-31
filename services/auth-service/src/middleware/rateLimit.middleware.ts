@@ -12,6 +12,7 @@ export const generalLimiter = rateLimit({
   handler: (_req: Request, res: Response) => {
     sendError(res, 429, 'Too many requests. Please try again later.', undefined, 'RATE_LIMIT_EXCEEDED');
   },
+  skip: (req) => req.method === 'OPTIONS',
 });
 
 // ─── Strict Auth Rate Limiter (login / register) ──────────────────────────────
@@ -24,4 +25,5 @@ export const authLimiter = rateLimit({
   handler: (_req: Request, res: Response) => {
     sendError(res, 429, 'Too many authentication attempts. Please try again later.', undefined, 'AUTH_RATE_LIMIT_EXCEEDED');
   },
+  skip: (req) => req.method === 'OPTIONS',
 });

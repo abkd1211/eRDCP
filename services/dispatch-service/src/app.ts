@@ -25,15 +25,29 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
-    const allowed = env.ALLOWED_ORIGINS.split(',');
-    if (!origin || allowed.includes(origin)) {
+    // If no origin (internal or server-to-server), allow it
+    if (!origin) return callback(null, true);
+    
+    // Ensure we have a list of origins (trimmed and lowercase for safety)
+    const allowed = env.ALLOWED_ORIGINS.split(',')
+      .map(o => o.trim().toLowerCase().replace(/\/$/, ''));
+    
+    const cleanOrigin = origin.trim().toLowerCase().replace(/\/$/, '');
+    
+    // Check for exact match, wildcard, or vercel subdomains
+    const isAllowed = allowed.includes(cleanOrigin) || 
+                     allowed.includes('*') ||
+                     (cleanOrigin.endsWith('.vercel.app'));
+    
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`[CORS REJECTED] Dispatch Service - Origin: "${origin}" mismatched. Allowed: ${allowed.join(', ')}`);
+      callback(null, false);
     }
   },
   methods:        ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-internal-secret'],
+  allowedHeaders: ['*'], // Be permissive with headers
   credentials:    true,
   maxAge:         86400,
 }));

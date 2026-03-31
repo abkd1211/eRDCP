@@ -13,21 +13,38 @@ import { errorHandler, notFoundHandler }from './middleware/error.middleware';
 const app: Application = express();
 
 // ─── Security ─────────────────────────────────────────────────────────────────
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: false, // Don't need CSP for a JSON API typically
+}));
 app.use(cors({
   origin: (origin, callback) => {
-    const allowed = env.ALLOWED_ORIGINS.split(',');
-    if (!origin || allowed.includes(origin)) {
+    // Debug info for Render logs
+    console.log(`[CORS DEBUG] Incoming Origin: "${origin}" | Allowed: "${env.ALLOWED_ORIGINS}"`);
+
+    if (!origin) return callback(null, true);
+    
+    const allowed = env.ALLOWED_ORIGINS.split(',')
+      .map(o => o.trim().toLowerCase().replace(/\/$/, ''));
+    
+    const cleanOrigin = origin.trim().toLowerCase().replace(/\/$/, '');
+    
+    const isAllowed = allowed.includes(cleanOrigin) || 
+                     allowed.includes('*') ||
+                     (cleanOrigin.endsWith('.vercel.app')); // Be very permissive for vercel for now
+    
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`[CORS REJECTED] Origin: "${origin}" mismatched. Allowed: ${allowed.join(', ')}`);
+      callback(null, false);
     }
   },
   methods:        ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'x-internal-secret', 'X-Requested-With'],
+  allowedHeaders: ['*'], // Be extremely permissive with headers for now
   exposedHeaders: ['X-Correlation-ID', 'X-Cache', 'X-Served-By'],
   credentials:    true,
-  maxAge:         86400, // 24 hours
+  maxAge:         86400,
 }));
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────
