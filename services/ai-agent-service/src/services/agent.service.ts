@@ -545,7 +545,7 @@ export class AiAgentService {
         CallSession.countDocuments({ status: 'FAILED' }).maxTimeMS(5000),
         ExtractedIncident.aggregate([
           { $group: { _id: null, avg: { $avg: '$overallConfidence' } } }
-        ]).maxTimeMS(5000),
+        ]).option({ maxTimeMS: 5000 }),
       ]);
 
       const [
