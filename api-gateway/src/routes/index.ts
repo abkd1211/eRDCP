@@ -164,4 +164,18 @@ router.get('/gateway/info', authenticate, (_req: Request, res: Response) => {
   });
 });
 
+// GATEWAY DEBUG: Returns public IP and headers (for IP detection troubleshooting)
+router.get('/gateway/debug', (_req: Request, res: Response) => {
+  res.json({
+    success: true,
+    data: {
+      ip:       _req.ip,
+      ips:      _req.ips,
+      headers:  _req.headers,
+      method:   _req.method,
+      protocol: _req.protocol,
+    }
+  });
+});
+
 export default router;

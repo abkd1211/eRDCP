@@ -5,8 +5,14 @@ import { Request, Response } from 'express';
 
 // Check if request is from the internal gateway with the correct secret
 const skipGateway = (req: Request): boolean => {
-  return req.headers['x-gateway'] === 'true' && 
-         req.headers['x-internal-secret'] === env.INTERNAL_SERVICE_SECRET;
+  const isGateway = req.headers['x-gateway'] === 'true';
+  const hasSecret = req.headers['x-internal-secret'] === env.INTERNAL_SERVICE_SECRET;
+  
+  if (isGateway && !hasSecret) {
+    console.warn(`[RATE LIMIT BYPASS FAILED] Gateway flag present but internal secret mismatch or missing for path: ${req.path}`);
+  }
+  
+  return isGateway && hasSecret;
 };
 
 // ─── General API Rate Limiter ─────────────────────────────────────────────────
