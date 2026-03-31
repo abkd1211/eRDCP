@@ -19,7 +19,7 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS:    z.string().default('900000').transform(Number),
   RATE_LIMIT_MAX_REQUESTS: z.string().default('100').transform(Number),
 
-  ALLOWED_ORIGINS: z.string().default('http://localhost:3000,http://localhost:3100'),
+  ALLOWED_ORIGINS:         z.string().default('https://e-rdcp.vercel.app,http://localhost:3000,http://localhost:3100'),
 });
 
 const parsed = envSchema.safeParse(process.env);

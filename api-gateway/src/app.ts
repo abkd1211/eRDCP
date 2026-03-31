@@ -15,11 +15,19 @@ const app: Application = express();
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin:         env.ALLOWED_ORIGINS.split(','),
+  origin: (origin, callback) => {
+    const allowed = env.ALLOWED_ORIGINS.split(',');
+    if (!origin || allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods:        ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'x-internal-secret'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-correlation-id', 'x-internal-secret', 'X-Requested-With'],
   exposedHeaders: ['X-Correlation-ID', 'X-Cache', 'X-Served-By'],
   credentials:    true,
+  maxAge:         86400, // 24 hours
 }));
 
 // ─── Body Parsing ─────────────────────────────────────────────────────────────

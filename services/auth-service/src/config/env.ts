@@ -22,7 +22,7 @@ const envSchema = z.object({
   RATE_LIMIT_MAX_REQUESTS: z.string().default('100').transform(Number),
   AUTH_RATE_LIMIT_MAX: z.string().default('10').transform(Number),
 
-  ALLOWED_ORIGINS: z.string().default('http://localhost:3000,http://localhost:3100'),
+  ALLOWED_ORIGINS:         z.string().default('https://e-rdcp.vercel.app,http://localhost:3000,http://localhost:3100'),
   INTERNAL_SERVICE_SECRET: z.string().min(1, 'INTERNAL_SERVICE_SECRET is required'),
 });
 

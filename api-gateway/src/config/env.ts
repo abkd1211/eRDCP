@@ -18,7 +18,7 @@ const envSchema = z.object({
   ANALYTICS_SERVICE_URL: z.string().default('http://localhost:3004'),
   AI_AGENT_SERVICE_URL:  z.string().default('http://localhost:3005'),
 
-  ALLOWED_ORIGINS:         z.string().default('http://localhost:3100'),
+  ALLOWED_ORIGINS:         z.string().default('https://e-rdcp.vercel.app,http://localhost:3100'),
   RATE_LIMIT_WINDOW_MS:    z.string().default('900000').transform(Number),
   RATE_LIMIT_MAX_REQUESTS: z.string().default('200').transform(Number),
   AUTH_RATE_LIMIT_MAX:     z.string().default('20').transform(Number),

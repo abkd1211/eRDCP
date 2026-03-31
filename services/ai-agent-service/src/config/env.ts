@@ -24,7 +24,7 @@ const envSchema = z.object({
   MAX_AUDIO_FILE_SIZE_MB: z.string().default('25').transform(Number),
   AUDIO_UPLOAD_PATH:      z.string().default('./uploads/audio'),
 
-  ALLOWED_ORIGINS:         z.string().default('http://localhost:3000,http://localhost:3100'),
+  ALLOWED_ORIGINS:         z.string().default('https://e-rdcp.vercel.app,http://localhost:3000,http://localhost:3100'),
   RATE_LIMIT_WINDOW_MS:    z.string().default('900000').transform(Number),
   RATE_LIMIT_MAX_REQUESTS: z.string().default('100').transform(Number),
 
