@@ -18,8 +18,8 @@ const app: Application = express();
 const httpServer       = createServer(app);
 
 // ─── Proxy ────────────────────────────────────────────────────────────────────
-// Necessary for rate limiting behind API Gateway
-app.set('trust proxy', 1);
+// Required for rate limiting to work correctly behind Render/Load Balancers
+app.set('trust proxy', true);
 
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());

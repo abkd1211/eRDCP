@@ -98,29 +98,22 @@ export const proxyTo = (serviceKey: ServiceKey, pathPrefix?: string) =>
     } catch (err: any) {
       await recordFailure(serviceKey);
 
-      const isTimeout = err.code === 'ECONNABORTED' || err.message?.includes('timeout');
-      const isRefused = err.code === 'ECONNREFUSED';
-      const hasResponse = !!err.response;
+      const errorCode = err.code || 'UNKNOWN_ERROR';
+      const errorMsg = err.response?.data?.message || err.message;
+      
+      logger.error(`Proxy failure to ${service.name}: ${req.method} ${targetUrl} [${errorCode}] - ${errorMsg}`);
 
-      logger.error(`Upstream error — ${service.name}`, {
-        path:       req.path,
-        method:     req.method,
-        status:     err.response?.status,
-        error:      err.message,
-        data:       err.response?.data,
-        isTimeout,
-        isRefused,
-      });
-
-      if (isTimeout) {
-        res.status(504).json({ success: false, message: 'Upstream service timed out', code: 'GATEWAY_TIMEOUT' });
-      } else if (isRefused) {
-        res.status(503).json({ success: false, message: `${service.name} is not reachable`, code: 'SERVICE_UNAVAILABLE' });
-      } else if (hasResponse) {
+      if (err.response) {
         // Forward the specific upstream error if it exists
         res.status(err.response.status).json(err.response.data);
       } else {
-        next(err);
+        // If internal connectivity fails (502)
+        res.status(502).json({
+          success: false,
+          message: `Bad Gateway: ${service.name} is unreachable or connection failed`,
+          error:   errorCode,
+          path:    targetUrl,
+        });
       }
     }
   };

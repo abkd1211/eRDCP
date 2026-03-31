@@ -24,7 +24,7 @@ const envSchema = z.object({
   // Falls back to straight-line interpolation if not set
   MAPBOX_TOKEN: z.string().optional(),
   
-  INTERNAL_SERVICE_SECRET: z.string().default('eRDCP_internal_communication_secret_2026'),
+  INTERNAL_SERVICE_SECRET: z.string().min(1).default('erdcp-internal-secret-2026'),
 });
 
 const parsed = envSchema.safeParse(process.env);

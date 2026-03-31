@@ -14,7 +14,8 @@ import { errorHandler, notFoundHandler, generalLimiter } from './middleware/inde
 const app: Application = express();
 
 // ─── Trust Proxy ─────────────────────────────────────────────────────────────
-app.set('trust proxy', 1);
+// Required for rate limiting to work correctly behind Render/Load Balancers
+app.set('trust proxy', true);
 
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet());

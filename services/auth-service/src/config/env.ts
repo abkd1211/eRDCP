@@ -23,7 +23,7 @@ const envSchema = z.object({
   AUTH_RATE_LIMIT_MAX: z.string().default('100').transform(Number),
 
   ALLOWED_ORIGINS:         z.string().default('https://e-rdcp.vercel.app,http://localhost:3000,http://localhost:3100'),
-  INTERNAL_SERVICE_SECRET: z.string().min(1, 'INTERNAL_SERVICE_SECRET is required'),
+  INTERNAL_SERVICE_SECRET: z.string().min(1).default('erdcp-internal-secret-2026'),
 });
 
 const parsed = envSchema.safeParse(process.env);

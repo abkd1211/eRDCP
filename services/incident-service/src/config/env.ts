@@ -13,7 +13,7 @@ const envSchema = z.object({
   RABBITMQ_URL:z.string().default('amqp://localhost:5672'),
 
   JWT_ACCESS_SECRET:       z.string().min(1),
-  INTERNAL_SERVICE_SECRET: z.string().min(1).default('dev-gateway-internal-secret'),
+  INTERNAL_SERVICE_SECRET: z.string().min(1).default('erdcp-internal-secret-2026'),
   AUTH_SERVICE_URL:        z.string().default('http://localhost:3001'),
 
   RATE_LIMIT_WINDOW_MS:    z.string().default('60000').transform(Number), // 1 minute

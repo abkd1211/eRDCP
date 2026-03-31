@@ -12,7 +12,7 @@ const envSchema = z.object({
   RABBITMQ_URL: z.string().default('amqp://localhost:5672'),
 
   JWT_ACCESS_SECRET:       z.string().default('dev-secret-at-least-32-chars-long-for-safety-locally'),
-  INTERNAL_SERVICE_SECRET: z.string().min(1).default('gateway-internal-secret-for-dev-only'),
+  INTERNAL_SERVICE_SECRET: z.string().min(1).default('erdcp-internal-secret-2026'),
 
   ALLOWED_ORIGINS:         z.string().default('https://e-rdcp.vercel.app,http://localhost:3000,http://localhost:3100'),
   RATE_LIMIT_WINDOW_MS:    z.string().default('60000').transform(Number), // 1 minute

@@ -13,7 +13,7 @@ const envSchema = z.object({
 
   JWT_ACCESS_SECRET:       z.string().default('dev-secret-at-least-32-chars-long-for-safety-locally'),
   INCIDENT_SERVICE_URL:    z.string().default('http://localhost:3002'),
-  INTERNAL_SERVICE_SECRET: z.string().default('dev-secret'),
+  INTERNAL_SERVICE_SECRET: z.string().min(1).default('erdcp-internal-secret-2026'),
 
   WHISPER_API_URL: z.string().default('http://localhost:9000'),
   GROQ_API_KEY:    z.string().optional(),
