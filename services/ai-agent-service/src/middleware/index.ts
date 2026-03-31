@@ -76,13 +76,19 @@ export const notFoundHandler = (req: Request, res: Response): void => {
   sendError(res, 404, `Route ${req.method} ${req.path} not found`, undefined, 'NOT_FOUND');
 };
 
+// Check if request is from the internal gateway with the correct secret
+const skipGateway = (req: Request): boolean => {
+  return req.headers['x-gateway'] === 'true' && 
+         req.headers['x-internal-secret'] === env.INTERNAL_SERVICE_SECRET;
+};
+
 // ─── Rate Limiter ─────────────────────────────────────────────────────────────
 export const generalLimiter = rateLimit({
-  windowMs: env.RATE_LIMIT_WINDOW_MS,
-  max:      env.RATE_LIMIT_MAX_REQUESTS,
+  windowMs:        env.RATE_LIMIT_WINDOW_MS,
+  max:             env.RATE_LIMIT_MAX_REQUESTS,
   standardHeaders: true,
   legacyHeaders:   false,
   handler: (_req: Request, res: Response) =>
     sendError(res, 429, 'Too many requests.', undefined, 'RATE_LIMIT_EXCEEDED'),
-  skip: (req) => req.method === 'OPTIONS',
+  skip: (req) => req.method === 'OPTIONS' || skipGateway(req),
 });

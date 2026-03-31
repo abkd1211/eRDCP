@@ -92,22 +92,30 @@ export const proxyTo = (serviceKey: ServiceKey, pathPrefix?: string) =>
       res.setHeader('X-Served-By', service.name);
       res.status(upstream.status).json(upstream.data);
 
-    } catch (err: unknown) {
+    } catch (err: any) {
       await recordFailure(serviceKey);
 
-      const isTimeout = err instanceof Error && err.message.includes('timeout');
-      const isRefused = err instanceof Error && err.message.includes('ECONNREFUSED');
+      const isTimeout = err.code === 'ECONNABORTED' || err.message?.includes('timeout');
+      const isRefused = err.code === 'ECONNREFUSED';
+      const hasResponse = !!err.response;
 
       logger.error(`Upstream error — ${service.name}`, {
-        path: req.path,
-        method: req.method,
-        error: err instanceof Error ? err.message : String(err),
+        path:       req.path,
+        method:     req.method,
+        status:     err.response?.status,
+        error:      err.message,
+        data:       err.response?.data,
+        isTimeout,
+        isRefused,
       });
 
       if (isTimeout) {
         res.status(504).json({ success: false, message: 'Upstream service timed out', code: 'GATEWAY_TIMEOUT' });
       } else if (isRefused) {
         res.status(503).json({ success: false, message: `${service.name} is not reachable`, code: 'SERVICE_UNAVAILABLE' });
+      } else if (hasResponse) {
+        // Forward the specific upstream error if it exists
+        res.status(err.response.status).json(err.response.data);
       } else {
         next(err);
       }
