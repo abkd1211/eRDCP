@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { ZodSchema, ZodError } from 'zod';
 import rateLimit from 'express-rate-limit';
 import { env } from '../config/env';
+import logger from '../config/logger';
 import redisClient from '../config/redis';
 import { sendError } from '../types';
 import { AuthenticatedRequest } from '../types';
@@ -99,8 +100,9 @@ export const errorHandler = (err: AppError, req: Request, res: Response, _next: 
   sendError(res, status, message, undefined, code);
 };
 
-export const notFoundHandler = (req: Request, res: Response): void => {
-  sendError(res, 404, `Route ${req.method} ${req.path} not found`, undefined, 'NOT_FOUND');
+export const notFoundHandler = (req: Request, res: Response) => {
+  logger.warn(`[404] AI Service: ${req.method} ${req.originalUrl} | Target Path: ${req.path}`);
+  sendError(res, 404, `Route ${req.method} ${req.originalUrl} not found`, undefined, 'NOT_FOUND');
 };
 
 // Check if request is from the internal gateway with the correct secret

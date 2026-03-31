@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import agentService from '../services/agent.service';
+import logger from '../config/logger';
 import { sendSuccess, sendError } from '../types';
 import { AuthenticatedRequest } from '../types';
 
@@ -28,7 +29,22 @@ export class AgentController {
     } catch (err) { next(err); }
   };
 
-  // ─── GET /agent/calls ─────────────────────────────────────────────────────
+  // ─── POST /agent/call/simulate ───────────────────────────────────────────
+  // Simulation — trigger NLP pipeline using a text script directly
+  simulateCall = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      logger.info('[CONTROLLER] Simulation triggered', { body: req.body });
+      const { textScript, callerPhone } = req.body as { textScript: string; callerPhone?: string };
+      
+      if (!textScript) {
+        sendError(res, 400, 'Text script is required for simulation', undefined, 'NO_SCRIPT');
+        return;
+      }
+
+      const result = await agentService.simulateIncomingCall(textScript, callerPhone ?? '00-SIM-001');
+      sendSuccess(res, 202, 'Simulation started', result);
+    } catch (err) { next(err); }
+  };
   listSessions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const page  = parseInt(req.query.page  as string ?? '1');
@@ -87,6 +103,7 @@ export class AgentController {
   // ─── POST /agent/operator/offline ────────────────────────────────────────
   markOperatorOffline = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      logger.info('[CONTROLLER] Marking operator offline', { userId: (req as AuthenticatedRequest).user?.id });
       const user = (req as AuthenticatedRequest).user;
       await agentService.markOperatorOffline(user.id);
       sendSuccess(res, 200, 'Operator marked offline', { userId: user.id });

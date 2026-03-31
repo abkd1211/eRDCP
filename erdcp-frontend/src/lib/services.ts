@@ -121,12 +121,16 @@ export const agentApi = {
     api.put(`/agent/calls/${id}/review`, { corrections }).then(d),
   replayNlp: (id: string) =>
     api.post(`/agent/calls/${id}/replay`).then(d),
+  simulateCall: (textScript: string, callerPhone?: string) =>
+    api.post('/agent/call/simulate', { textScript, callerPhone }).then(d),
   markOnline: () =>
-    api.post('/agent/operator/online').catch(() => {}),
+    api.post('/agent/operator/online').then(d),
   markOffline: () =>
-    api.post('/agent/operator/offline').catch(() => {}),
+    api.post('/agent/operator/offline').then(d),
   heartbeat: () =>
-    api.post('/agent/operator/heartbeat').catch(() => {}),
+    api.post('/agent/operator/heartbeat').then(d),
+  resetCircuit: () =>
+    api.delete('/gateway/circuits/agent').then(d),
 };
 
 // ─── Simulation ───────────────────────────────────────────────────────────────

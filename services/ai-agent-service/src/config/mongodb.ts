@@ -8,8 +8,8 @@ export const connectMongoDB = async (): Promise<void> => {
     await mongoose.connect(env.MONGODB_URI);
     logger.info('MongoDB connected');
   } catch (err) {
-    logger.error('MongoDB connection failed', { error: err });
-    process.exit(1);
+    logger.error('MongoDB connection failed — staying in degraded mode', { error: err });
+    // Don't exit — allow the service to start and retry in background
   }
 };
 

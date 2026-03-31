@@ -47,10 +47,51 @@ export interface RegionStat { region: string; count: number; byType: Partial<Rec
 export interface TopResponder { responderId: string; responderName: string; totalDispatch: number; avgArrivalSec: number; slaCompliance: number; streakDays: number; }
 export interface ResponseTimeData { avgDispatchSec: number; avgArrivalSec: number; avgResolutionSec: number; slaTargetSec: number; }
 
-export interface CallSession { _id: string; callerPhone: string; audioFile: string; status: SessionStatus; language?: string; handledBy: string; createdAt: string; updatedAt: string; }
+export interface CallSession { 
+  _id: string; 
+  sessionId: string; 
+  callerPhone: string; 
+  audioFile: string; 
+  status: SessionStatus; 
+  language?: string; 
+  handledBy: string; 
+  transcription?: { 
+    text?: string; 
+    cleanedText: string; 
+    language?: string; 
+    confidence?: number; 
+  };
+  extraction?: ExtractedIncident;
+  createdAt: string; 
+  updatedAt: string; 
+}
 export interface ExtractedField { value: string; confidence: number; }
-export interface ExtractedIncident { citizenName: string; confidenceName: number; incidentType: string; confidenceType: number; locationText: string; confidenceLocation: number; latitude: number; confidenceLat: number; longitude: number; confidenceLng: number; urgency: string; confidenceUrgency: number; notes: string; confidenceNotes: number; confidence: number; corrections: Array<{ field: string; oldValue: string; newValue: string; correctedAt: string }>; }
-export interface AgentStatus { operatorsOnline: number; isAiActive: boolean; whisperModel: string; totalSessions: number; autoSubmitRate: number; avgConfidence: number; }
+export interface ExtractedIncident {
+  sessionId: string;
+  citizenName:  ExtractedField;
+  incidentType: ExtractedField;
+  locationText: ExtractedField;
+  latitude:     ExtractedField & { source: string };
+  longitude:    ExtractedField & { source: string };
+  urgencyLevel: ExtractedField;
+  notes:        ExtractedField;
+  overallConfidence: number;
+  autoSubmitted: boolean;
+  manuallyEdited: boolean;
+}
+export interface AgentStatus {
+  operatorsOnline: number;
+  totalSessions: number;
+  autoSubmitted: number;
+  pendingReview: number;
+  reviewed: number;
+  discarded: number;
+  failed: number;
+  autoSubmitRate: number;
+  avgConfidence: number;
+  whisperAvailable: boolean;
+  confidenceThreshold: number;
+}
 
 export interface Paginated<T> { data: T[]; total: number; page: number; pages: number; limit: number; }
 

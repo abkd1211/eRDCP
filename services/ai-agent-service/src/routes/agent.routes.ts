@@ -58,4 +58,11 @@ router.post(
   agentController.replayNlp
 );
 
+// ─── Simulation (Developer/Simulation mode) ──────────────────────────────────
+router.post(
+  '/call/simulate',
+  authorise('SYSTEM_ADMIN'),
+  agentController.simulateCall
+);
+
 export default router;

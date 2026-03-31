@@ -12,9 +12,14 @@ import { errorHandler, notFoundHandler }from './middleware/error.middleware';
 
 const app: Application = express();
 
-// Required for rate limiting to work correctly behind Render/Load Balancers
-// Using 'true' for Render to robustly handle their multi-tier proxy chain
+// ─── Trust Proxy & Debugging ──────────────────────────────────────────────────
 app.set('trust proxy', true);
+
+// 🚨 TRAFFIC MONITOR: Prints every request the moment it hits the server
+app.use((req, _res, next) => {
+  logger.info(`[TRAFFIC] ${req.method} ${req.originalUrl} | IP: ${req.ip}`);
+  next();
+});
 
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet({

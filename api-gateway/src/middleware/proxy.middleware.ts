@@ -10,7 +10,7 @@ import logger from '../config/logger';
 import { GatewayRequest } from './auth.middleware';
 
 // ─── Generic proxy handler ────────────────────────────────────────────────────
-export const proxyTo = (serviceKey: ServiceKey, pathPrefix?: string) =>
+export const proxyTo = (serviceKey: ServiceKey) =>
   async (req: GatewayRequest, res: Response, next: NextFunction): Promise<void> => {
     const service = SERVICES[serviceKey];
 
@@ -27,10 +27,7 @@ export const proxyTo = (serviceKey: ServiceKey, pathPrefix?: string) =>
     }
 
     // ── Build target URL ───────────────────────────────────────────────────────
-    const targetPath = pathPrefix
-      ? req.originalUrl.replace(pathPrefix, '')
-      : req.originalUrl;
-    const targetUrl = `${service.url}${targetPath}`;
+    const targetUrl = `${service.url}${req.originalUrl}`;
 
     // ── Response cache check (GET requests only) ───────────────────────────────
     const cacheEnabled = env.RESPONSE_CACHE_TTL > 0 && req.method === 'GET' && req.user;
@@ -101,17 +98,29 @@ export const proxyTo = (serviceKey: ServiceKey, pathPrefix?: string) =>
       const errorCode = err.code || 'UNKNOWN_ERROR';
       const errorMsg = err.response?.data?.message || err.message;
       
-      logger.error(`Proxy failure to ${service.name}: ${req.method} ${targetUrl} [${errorCode}] - ${errorMsg}`);
+      // DIAGNOSTIC LOGGING
+      logger.error(`Proxy failure to ${service.name} [${serviceKey}]: ${req.method} ${targetUrl}`, {
+        errorCode,
+        errorMsg,
+        stack: err.stack?.split('\n').slice(0, 2).join(' '),
+        headersSent: res.headersSent
+      });
+
+      if (res.headersSent) return;
 
       if (err.response) {
         // Forward the specific upstream error if it exists
         res.status(err.response.status).json(err.response.data);
       } else {
-        // If internal connectivity fails (502)
-        res.status(502).json({
+        // If internal connectivity fails (ECONNREFUSED, ETIMEDOUT, etc)
+        const status = errorCode === 'ECONNABORTED' ? 504 : 502;
+        res.status(status).json({
           success: false,
-          message: `Bad Gateway: ${service.name} is unreachable or connection failed`,
+          message: errorCode === 'ECONNREFUSED' 
+            ? `Connection Refused: ${service.name} is not listening on the expected port.`
+            : `Bad Gateway: ${service.name} is unreachable or connection failed`,
           error:   errorCode,
+          details: errorMsg,
           path:    targetUrl,
         });
       }

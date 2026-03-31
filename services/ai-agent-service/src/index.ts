@@ -7,60 +7,69 @@ import { connectRabbitMQ, disconnectRabbitMQ } from './config/rabbitmq';
 import { isWhisperAvailable }                  from './utils/whisper';
 
 const bootstrap = async (): Promise<void> => {
-  try {
-    await connectMongoDB();
-    await connectRedis();
-    await connectRabbitMQ();
+  const whisperStatus = { available: false };
 
-    // Check Whisper on startup — warn if not running but don't crash
-    const whisperUp = await isWhisperAvailable();
-    if (whisperUp) {
-      logger.info('Whisper STT API is available', { url: env.WHISPER_API_URL });
-    } else {
-      logger.warn('⚠️  Whisper STT API is NOT running — using simulated transcripts', {
-        url:  env.WHISPER_API_URL,
-        hint: 'Run: docker run -p 9000:9000 onerahmet/openai-whisper-asr-webservice:latest-cpu',
-      });
-    }
-
-    const server = app.listen(env.PORT, () => {
-      logger.info('🤖 AI Call Agent Service running', {
-        port:               env.PORT,
-        environment:        env.NODE_ENV,
-        docs:               `http://localhost:${env.PORT}/docs`,
-        health:             `http://localhost:${env.PORT}/health`,
-        whisper:            whisperUp ? 'online' : 'offline (simulated)',
-        autoSubmitThreshold:`${env.AUTO_SUBMIT_CONFIDENCE_THRESHOLD * 100}%`,
-      });
+  // ─── Phase 1: Immediate Listen ──────────────────────────────────────────────
+  // We start the server first so the Gateway finds it reachable and stays 'Closed'
+  const server = app.listen(env.PORT, () => {
+    logger.info('🤖 AI Call Agent Service listening', {
+      port:               env.PORT,
+      status:             'Awaiting Dependency Stimuli...',
+      health:             `http://localhost:${env.PORT}/health`,
     });
+  });
 
-    const shutdown = async (signal: string): Promise<void> => {
-      logger.info(`${signal} received — shutting down gracefully`);
-      server.close(async () => {
-        await disconnectRabbitMQ();
-        await disconnectMongoDB();
-        await disconnectRedis();
-        logger.info('All connections closed');
-        process.exit(0);
-      });
-      setTimeout(() => { logger.error('Forced shutdown'); process.exit(1); }, 10_000);
-    };
+  // ─── Phase 2: Parallel Dependency Connections ───────────────────────────────
+  const initDependencies = async () => {
+    // MongoDB
+    connectMongoDB()
+      .then(() => logger.info('MongoDB established'))
+      .catch((err) => logger.error('MongoDB init failed', { error: err.message }));
+    
+    // Redis
+    connectRedis()
+      .then(() => logger.info('Redis established'))
+      .catch((err) => logger.error('Redis init failed', { error: err.message }));
 
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT',  () => shutdown('SIGINT'));
+    // RabbitMQ
+    connectRabbitMQ()
+      .then(() => logger.info('RabbitMQ established'))
+      .catch((err) => logger.error('RabbitMQ init failed', { error: err.message }));
 
-    process.on('unhandledRejection', (reason) =>
-      logger.error('Unhandled rejection', { reason })
-    );
-    process.on('uncaughtException', (err) => {
-      logger.error('Uncaught exception', { error: err.message, stack: err.stack });
-      process.exit(1);
+    // Whisper
+    isWhisperAvailable().then(up => {
+      whisperStatus.available = up;
+      if (up) logger.info('Whisper STT connected');
+      else logger.warn('Whisper STT simulated');
     });
+  };
 
-  } catch (err) {
-    logger.error('Failed to start AI Agent Service', { error: err });
-    process.exit(1);
-  }
+  initDependencies();
+
+  // ─── Graceful Shutdown ──────────────────────────────────────────────────────
+  const shutdown = async (signal: string): Promise<void> => {
+    logger.info(`${signal} received — shutting down gracefully`);
+    server.close(async () => {
+      await disconnectRabbitMQ().catch(() => {});
+      await disconnectMongoDB().catch(() => {});
+      await disconnectRedis().catch(() => {});
+      logger.info('All connections closed');
+      process.exit(0);
+    });
+    setTimeout(() => { logger.error('Forced shutdown'); process.exit(1); }, 10_000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+
+  process.on('unhandledRejection', (reason) =>
+    logger.error('Unhandled rejection', { reason })
+  );
+  process.on('uncaughtException', (err) => {
+    logger.error('Uncaught exception', { error: err.message, stack: err.stack });
+    // Don't exit immediately on uncaught exceptions if we want to stay "listening"
+    // but log it heavily for debugging.
+  });
 };
 
 bootstrap();

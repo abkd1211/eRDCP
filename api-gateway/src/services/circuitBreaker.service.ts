@@ -108,3 +108,12 @@ export const getAllCircuitStatuses = async (): Promise<Record<string, CircuitSta
 
   return result;
 };
+
+/**
+ * Manually reset a service's circuit state — used for recovery after maintenance
+ */
+export const clearCircuit = async (serviceKey: string): Promise<void> => {
+  const key = REDIS_KEYS.circuitBreaker(serviceKey);
+  await redisClient.del(key);
+  logger.info(`Manual circuit reset triggered for ${serviceKey}`);
+};

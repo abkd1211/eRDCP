@@ -24,13 +24,18 @@ export class AiAgentService {
   async markOperatorOnline(userId: string): Promise<void> {
     await redisClient.setEx(REDIS_KEYS.operatorOnline(userId), REDIS_TTL.operatorHeartbeat, '1');
     await redisClient.sAdd(REDIS_KEYS.onlineOperators(), userId);
+    await redisClient.del(REDIS_KEYS.agentStats());
     logger.debug('Operator marked online', { userId });
   }
 
   // Call this on logout or when JWT expires
   async markOperatorOffline(userId: string): Promise<void> {
     await redisClient.del(REDIS_KEYS.operatorOnline(userId));
-    await redisClient.sRem(REDIS_KEYS.onlineOperators(), userId);
+    const removedCount = await redisClient.sRem(REDIS_KEYS.onlineOperators(), userId);
+    logger.info(`[REDIS] Removed operator from online set`, { userId, removedCount });
+    
+    // Invalidate stats cache immediately
+    await redisClient.del(REDIS_KEYS.agentStats());
     logger.debug('Operator marked offline', { userId });
   }
 
@@ -118,6 +123,76 @@ export class AiAgentService {
       status:  'AI_PROCESSING',
       message: 'No operator available. AI agent is processing the call.',
     };
+  }
+
+  // ─── Simulation Pipeline — skips audio/transcription ─────────────────────
+  async simulateIncomingCall(textScript: string, callerPhone: string): Promise<{ sessionId: string; status: string; message: string }> {
+    const sessionId = uuidv4();
+    
+    // Create session record
+    await CallSession.create({
+      sessionId,
+      callerPhone,
+      audioFilePath:  'simulated',
+      audioFileName:  'simulation.txt',
+      status:         'RECEIVED',
+      handledBy:      'ai',
+      startedAt:      new Date(),
+    });
+
+    // Create transcription record immediately
+    await Transcription.create({
+      sessionId,
+      rawText:     textScript,
+      cleanedText: textScript.trim(),
+      language:    'en',
+      confidenceScore: 1.0,
+      wordCount:   textScript.split(' ').length,
+      processedAt: new Date(),
+      whisperModel: 'simulation-manual',
+      processingMs: 0,
+    });
+
+    await CallSession.findOneAndUpdate({ sessionId }, { 
+      status: 'TRANSCRIBED',
+      transcribedAt: new Date(),
+      detectedLanguage: 'en'
+    });
+
+    // Run the rest of the pipeline (Extract → Geocode → Submit)
+    this.runPipelineFromText(sessionId, textScript).catch(err => {
+      logger.error('Simulation pipeline failed', { sessionId, error: err });
+    });
+
+    return {
+      sessionId,
+      status:  'SIMULATING',
+      message: 'Simulation started from text script.',
+    };
+  }
+
+  // ─── Pipeline Start from Text ─────────────────────────────────────────────
+  private async runPipelineFromText(sessionId: string, transcript: string): Promise<void> {
+    try {
+      // Skip Step 1 (Transcribe) — already done
+      
+      // Step 2 — Extract
+      const extraction = await this.extractStep(sessionId, transcript);
+      if (!extraction) return;
+
+      // Step 3 — Geocode
+      await this.geocodeStep(sessionId, extraction.locationText?.value as string);
+
+      // Step 4 — Submit or queue for review
+      await this.submitOrQueueStep(sessionId);
+
+    } catch (err) {
+      logger.error('Text pipeline error', { sessionId, error: err });
+      await CallSession.findOneAndUpdate(
+        { sessionId },
+        { status: 'FAILED', processingError: String(err) }
+      );
+    }
   }
 
   // ─── Full AI Pipeline ─────────────────────────────────────────────────────
@@ -456,51 +531,73 @@ export class AiAgentService {
   // ═══════════════════════════════════════════════════════
 
   async getAgentStats() {
-    const cached = await redisClient.get(REDIS_KEYS.agentStats());
-    if (cached) return JSON.parse(cached);
+    try {
+      const cached = await redisClient.get(REDIS_KEYS.agentStats());
+      if (cached) return JSON.parse(cached);
 
-    const [
-      totalSessions,
-      autoSubmitted,
-      pendingReview,
-      reviewed,
-      discarded,
-      failed,
-      avgConfidence,
-    ] = await Promise.all([
-      CallSession.countDocuments(),
-      CallSession.countDocuments({ status: 'AUTO_SUBMITTED' }),
-      CallSession.countDocuments({ status: 'PENDING_REVIEW' }),
-      CallSession.countDocuments({ status: 'REVIEWED' }),
-      CallSession.countDocuments({ status: 'DISCARDED' }),
-      CallSession.countDocuments({ status: 'FAILED' }),
-      ExtractedIncident.aggregate([
-        { $group: { _id: null, avg: { $avg: '$overallConfidence' } } }
-      ]),
-    ]);
+      // Fast-fail if DB is slow (5s timeout)
+      const statsPromise = Promise.all([
+        CallSession.countDocuments().maxTimeMS(5000),
+        CallSession.countDocuments({ status: 'AUTO_SUBMITTED' }).maxTimeMS(5000),
+        CallSession.countDocuments({ status: 'PENDING_REVIEW' }).maxTimeMS(5000),
+        CallSession.countDocuments({ status: 'REVIEWED' }).maxTimeMS(5000),
+        CallSession.countDocuments({ status: 'DISCARDED' }).maxTimeMS(5000),
+        CallSession.countDocuments({ status: 'FAILED' }).maxTimeMS(5000),
+        ExtractedIncident.aggregate([
+          { $group: { _id: null, avg: { $avg: '$overallConfidence' } } }
+        ]).maxTimeMS(5000),
+      ]);
 
-    const operatorOnlineCount = await this.getOnlineOperatorCount();
-    const autoSubmitRate = totalSessions > 0
-      ? Math.round((autoSubmitted / totalSessions) * 100)
-      : 0;
+      const [
+        totalSessions,
+        autoSubmitted,
+        pendingReview,
+        reviewed,
+        discarded,
+        failed,
+        avgConfidence,
+      ] = await statsPromise;
 
-    const stats = {
-      totalSessions,
-      autoSubmitted,
-      pendingReview,
-      reviewed,
-      discarded,
-      failed,
-      autoSubmitRate,
-      avgConfidence:        Math.round((avgConfidence[0]?.avg ?? 0) * 100) / 100,
-      operatorsOnline:      operatorOnlineCount,
-      whisperAvailable:     await isWhisperAvailable(),
-      confidenceThreshold:  env.AUTO_SUBMIT_CONFIDENCE_THRESHOLD,
-      generatedAt:          new Date().toISOString(),
-    };
+      const operatorOnlineCount = await this.getOnlineOperatorCount();
+      const autoSubmitRate = totalSessions > 0
+        ? Math.round((autoSubmitted / totalSessions) * 100)
+        : 0;
 
-    await redisClient.setEx(REDIS_KEYS.agentStats(), REDIS_TTL.agentStats, JSON.stringify(stats));
-    return stats;
+      const stats = {
+        totalSessions,
+        autoSubmitted,
+        pendingReview,
+        reviewed,
+        discarded,
+        failed,
+        autoSubmitRate,
+        avgConfidence:        Math.round((avgConfidence[0]?.avg ?? 0) * 100) / 100,
+        operatorsOnline:      operatorOnlineCount,
+        whisperAvailable:     await isWhisperAvailable(),
+        confidenceThreshold:  env.AUTO_SUBMIT_CONFIDENCE_THRESHOLD,
+        generatedAt:          new Date().toISOString(),
+      };
+
+      await redisClient.setEx(REDIS_KEYS.agentStats(), REDIS_TTL.agentStats, JSON.stringify(stats));
+      return stats;
+    } catch (err) {
+      logger.error('Failed to aggregate agent stats — returning defaults', { error: (err as Error).message });
+      return {
+        totalSessions: 0,
+        autoSubmitted: 0,
+        pendingReview: 0,
+        reviewed: 0,
+        discarded: 0,
+        failed: 0,
+        autoSubmitRate: 0,
+        avgConfidence: 0,
+        operatorsOnline: await this.getOnlineOperatorCount().catch(() => 0),
+        whisperAvailable: false,
+        confidenceThreshold: env.AUTO_SUBMIT_CONFIDENCE_THRESHOLD,
+        generatedAt: new Date().toISOString(),
+        isDegraded: true
+      };
+    }
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────

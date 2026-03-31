@@ -13,8 +13,11 @@ export function Badge({ children, color, bg, className }: BadgeProps) {
   );
 }
 
-export function IncidentTypeBadge({ type }: { type: IncidentType }) {
-  const c = INCIDENT_CONFIG[type];
+export function IncidentTypeBadge({ type }: { type: string }) {
+  const c = INCIDENT_CONFIG[type as IncidentType];
+  if (!c) {
+    return <Badge color="#5A6370" bg="#5A637018">{type}</Badge>;
+  }
   return <Badge color={c.color} bg={c.bg}>{c.label}</Badge>;
 }
 

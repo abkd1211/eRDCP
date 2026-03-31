@@ -3,8 +3,9 @@ import { authenticate, optionalAuth, requireRole } from '../middleware/auth.midd
 import { proxyTo, proxyStream } from '../middleware/proxy.middleware';
 import { authLimiter, strictLimiter } from '../middleware/rateLimit.middleware';
 import { checkAllServices } from '../services/health.service';
-import { getAllCircuitStatuses } from '../services/circuitBreaker.service';
+import { getAllCircuitStatuses, clearCircuit } from '../services/circuitBreaker.service';
 import redisClient, { REDIS_KEYS } from '../config/redis';
+import logger from '../config/logger';
 
 const router = Router();
 
@@ -122,14 +123,26 @@ router.get('/analytics/hospital-capacity', authenticate,
 // AI AGENT SERVICE — :3005
 // ═══════════════════════════════════════════════════════════════════════════
 router.get('/agent/status', authenticate, proxyTo('agent'));
-router.post('/agent/call/ingest', authenticate, requireRole('SYSTEM_ADMIN'), proxyStream('agent'));
 router.get('/agent/calls', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));
+
+// Simulation endpoint
+router.post('/agent/call/simulate', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));
+
+router.post('/agent/call/ingest', authenticate, requireRole('SYSTEM_ADMIN'), proxyStream('agent'));
+
 router.get('/agent/calls/:id', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));
 router.put('/agent/calls/:id/review', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));
 router.post('/agent/calls/:id/replay', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('agent'));
 router.post('/agent/operator/online', authenticate, proxyTo('agent'));
 router.post('/agent/operator/offline', authenticate, proxyTo('agent'));
 router.post('/agent/operator/heartbeat', authenticate, proxyTo('agent'));
+
+// ─── Circuit Breaker Utilities ────────────────────────────────────────────────
+router.delete('/gateway/circuits/:service', authenticate, requireRole('SYSTEM_ADMIN'), async (req, res) => {
+  const service = req.params.service as string;
+  await clearCircuit(service);
+  res.json({ success: true, message: `Circuit breaker state cleared for ${service}` });
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GATEWAY UTILITIES
