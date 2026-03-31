@@ -92,6 +92,9 @@ app.get('/auth/swagger.yaml', (_req, res) => {
   });
 });
 
+// ─── API Routes ───────────────────────────────────────────────────────────────
+app.use('/auth', authRoutes);
+
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
   customSiteTitle: 'Auth Service API Docs',
   customCss: '.swagger-ui .topbar { background-color: #991B1B; }',

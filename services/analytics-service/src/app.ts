@@ -78,10 +78,7 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
-app.use('/analytics', analyticsRoutes);
-
-// ─── Swagger Docs ─────────────────────────────────────────────────────────────
+// ─── Swagger Specs (Public) ─────────────────────────────────────────────────────
 const swaggerFilePath = path.join(__dirname, 'config/swagger.yaml');
 const swaggerDocument = YAML.load(swaggerFilePath);
 
@@ -95,6 +92,9 @@ app.get('/analytics/swagger.yaml', (_req, res) => {
     }
   });
 });
+
+// ─── API Routes ───────────────────────────────────────────────────────────────
+app.use('/analytics', analyticsRoutes);
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
   customSiteTitle: 'Analytics Service API Docs',

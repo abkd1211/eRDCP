@@ -101,10 +101,7 @@ app.post('/internal/vehicles/return-by-responder/:responderId', async (req, res)
   }
 });
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
-app.use('/', dispatchRoutes);
-
-// ─── Swagger Docs ─────────────────────────────────────────────────────────────
+// ─── Swagger Specs (Public) ─────────────────────────────────────────────────────
 const swaggerFilePath = path.join(__dirname, 'config/swagger.yaml');
 const swaggerDocument = YAML.load(swaggerFilePath);
 
@@ -119,6 +116,10 @@ app.get('/dispatch/swagger.yaml', (_req, res) => {
   });
 });
 
+// ─── API Routes ───────────────────────────────────────────────────────────────
+app.use('/', dispatchRoutes);
+
+// ─── Swagger Docs ─────────────────────────────────────────────────────────────
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
   customSiteTitle: 'Dispatch Tracking API Docs',
   customCss: '.swagger-ui .topbar { background-color: #991B1B; }',

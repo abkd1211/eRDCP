@@ -78,10 +78,7 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
-app.use('/agent', agentRoutes);
-
-// ─── Swagger Docs ─────────────────────────────────────────────────────────────
+// ─── Swagger Specs (Public) ─────────────────────────────────────────────────────
 const swaggerFilePath = path.join(__dirname, 'config/swagger.yaml');
 const swaggerDocument = YAML.load(swaggerFilePath);
 
@@ -95,6 +92,9 @@ app.get('/agent/swagger.yaml', (_req, res) => {
     }
   });
 });
+
+// ─── API Routes ───────────────────────────────────────────────────────────────
+app.use('/agent', agentRoutes);
 
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
   customSiteTitle: 'AI Call Agent API Docs',
