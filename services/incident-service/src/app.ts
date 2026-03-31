@@ -85,7 +85,14 @@ app.use('/incidents', incidentRoutes);
 app.use('/responders', responderRoutes);
 
 // ─── Swagger Docs ─────────────────────────────────────────────────────────────
-const swaggerDocument = YAML.load(path.join(__dirname, 'config/swagger.yaml'));
+const swaggerFilePath = path.join(__dirname, 'config/swagger.yaml');
+const swaggerDocument = YAML.load(swaggerFilePath);
+
+// Expose raw spec for Gateway Hub
+app.get('/swagger.yaml', (_req, res) => {
+  res.sendFile(swaggerFilePath);
+});
+
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
   customSiteTitle: 'Incident Service API Docs',
   customCss: '.swagger-ui .topbar { background-color: #991B1B; }',

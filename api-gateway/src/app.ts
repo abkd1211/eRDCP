@@ -2,6 +2,7 @@ import express, { Application } from 'express';
 import cors    from 'cors';
 import helmet  from 'helmet';
 import morgan  from 'morgan';
+import swaggerUi from 'swagger-ui-express';
 
 import { env }                         from './config/env';
 import logger                          from './config/logger';
@@ -12,6 +13,21 @@ import { errorHandler, notFoundHandler }from './middleware/error.middleware';
 
 const app: Application = express();
 
+const swaggerOptions = {
+  explorer: true,
+  swaggerOptions: {
+    urls: [
+      { url: '/auth/swagger.yaml',      name: 'Auth Service' },
+      { url: '/incident/swagger.yaml',  name: 'Incident Service' },
+      { url: '/dispatch/swagger.yaml',  name: 'Dispatch & Tracking' },
+      { url: '/analytics/swagger.yaml', name: 'Analytics & Monitoring' },
+      { url: '/agent/swagger.yaml',     name: 'AI Call Agent' },
+    ]
+  },
+  customSiteTitle: 'eRDCP Unified API Docs',
+  customCss: '.swagger-ui .topbar { background-color: #1e293b; }'
+};
+
 // ─── Trust Proxy & Debugging ──────────────────────────────────────────────────
 app.set('trust proxy', true);
 
@@ -20,6 +36,12 @@ app.use((req, _res, next) => {
   logger.info(`[TRAFFIC] ${req.method} ${req.originalUrl} | IP: ${req.ip}`);
   next();
 });
+
+// Mounted directly at the top for maximum reliability
+const docsRouter = express.Router();
+docsRouter.use('/', swaggerUi.serve);
+docsRouter.get('/', swaggerUi.setup(undefined, swaggerOptions));
+app.use('/docs', docsRouter);
 
 // ─── Security ─────────────────────────────────────────────────────────────────
 app.use(helmet({

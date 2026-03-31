@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import swaggerUi from 'swagger-ui-express';
 import { authenticate, optionalAuth, requireRole } from '../middleware/auth.middleware';
 import { proxyTo, proxyStream } from '../middleware/proxy.middleware';
 import { authLimiter, strictLimiter } from '../middleware/rateLimit.middleware';
@@ -39,6 +40,29 @@ router.get('/health/circuits', authenticate, requireRole('SYSTEM_ADMIN'), async 
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// UNIFIED DOCUMENTATION HUB — /docs
+// ═══════════════════════════════════════════════════════════════════════════
+
+const swaggerOptions = {
+  explorer: true,
+  swaggerOptions: {
+    urls: [
+      { url: '/auth/swagger.yaml',      name: 'Auth Service' },
+      { url: '/incident/swagger.yaml',  name: 'Incident Service' },
+      { url: '/dispatch/swagger.yaml',  name: 'Dispatch & Tracking' },
+      { url: '/analytics/swagger.yaml', name: 'Analytics & Monitoring' },
+      { url: '/agent/swagger.yaml',     name: 'AI Call Agent' },
+    ]
+  },
+  customSiteTitle: 'eRDCP Unified API Docs',
+  customCss: '.swagger-ui .topbar { background-color: #1e293b; }'
+};
+
+// Serve UI
+router.use('/docs', swaggerUi.serve);
+router.get('/docs', swaggerUi.setup(undefined, swaggerOptions));
+
+// ═══════════════════════════════════════════════════════════════════════════
 // AUTH SERVICE — :3001
 // Public routes first, then protected
 // ═══════════════════════════════════════════════════════════════════════════
@@ -59,6 +83,9 @@ router.delete('/auth/users/:id', authenticate, requireRole('SYSTEM_ADMIN'), prox
 // Internal — gateway itself uses this to verify tokens
 router.post('/auth/verify-token', proxyTo('auth'));
 
+// Documentation Spec
+router.get('/auth/swagger.yaml', proxyTo('auth'));
+
 // ═══════════════════════════════════════════════════════════════════════════
 // INCIDENT SERVICE — :3002
 // ═══════════════════════════════════════════════════════════════════════════
@@ -74,6 +101,9 @@ router.get('/incidents/:id/linked-reports', authenticate, proxyTo('incident'));
 
 // Nearest responder query
 router.get('/incidents/nearest/:lat/:lng/:type', authenticate, proxyTo('incident'));
+
+// Documentation Spec
+router.get('/incident/swagger.yaml', proxyTo('incident'));
 
 // Responders
 router.get('/responders', authenticate, proxyTo('incident'));
@@ -99,6 +129,9 @@ router.get('/vehicles/:id/assignment', authenticate, proxyTo('dispatch'));
 router.post('/vehicles/:id/trip/complete', authenticate, proxyTo('dispatch'));
 router.get('/dispatch/:incidentId', authenticate, proxyTo('dispatch'));
 
+// Documentation Spec
+router.get('/dispatch/swagger.yaml', proxyTo('dispatch'));
+
 // ─── Simulation Controls ──────────────────────────────────────────────────────
 router.post('/simulation/speed', authenticate, requireRole('SYSTEM_ADMIN'), proxyTo('dispatch'));
 router.get('/simulation/speed', authenticate, proxyTo('dispatch'));
@@ -119,6 +152,9 @@ router.get('/analytics/heatmap', authenticate, proxyTo('analytics'));
 router.get('/analytics/hospital-capacity', authenticate,
   requireRole('HOSPITAL_ADMIN', 'SYSTEM_ADMIN'), proxyTo('analytics'));
 
+// Documentation Spec
+router.get('/analytics/swagger.yaml', proxyTo('analytics'));
+
 // ═══════════════════════════════════════════════════════════════════════════
 // AI AGENT SERVICE — :3005
 // ═══════════════════════════════════════════════════════════════════════════
@@ -136,6 +172,10 @@ router.post('/agent/calls/:id/replay', authenticate, requireRole('SYSTEM_ADMIN')
 router.post('/agent/operator/online', authenticate, proxyTo('agent'));
 router.post('/agent/operator/offline', authenticate, proxyTo('agent'));
 router.post('/agent/operator/heartbeat', authenticate, proxyTo('agent'));
+
+// Documentation Spec
+router.get('/agent/swagger.yaml', proxyTo('agent'));
+
 
 // ─── Circuit Breaker Utilities ────────────────────────────────────────────────
 router.delete('/gateway/circuits/:service', authenticate, requireRole('SYSTEM_ADMIN'), async (req, res) => {
