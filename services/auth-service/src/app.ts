@@ -82,7 +82,7 @@ const swaggerFilePath = path.join(__dirname, 'config/swagger.yaml');
 const swaggerDocument = YAML.load(swaggerFilePath);
 
 // Expose raw spec for Gateway Hub
-app.get('/swagger.yaml', (_req, res) => {
+app.get('/auth/swagger.yaml', (_req, res) => {
   res.sendFile(swaggerFilePath);
 });
 
