@@ -1,11 +1,11 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Radio, Eye, EyeOff, Loader2, Lock } from 'lucide-react';
+import { Radio, Eye, EyeOff, Loader2, Lock, Zap } from 'lucide-react';
 import { useAuth } from '@/store/auth.store';
 import { authApi } from '@/lib/services';
 
@@ -20,6 +20,8 @@ export default function LoginPage() {
   const { setAuth } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [isWarmingUp, setIsWarmingUp] = useState(false);
+  const warmupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -27,6 +29,11 @@ export default function LoginPage() {
 
   const onSubmit = async (values: FormData) => {
     setError('');
+    setIsWarmingUp(false);
+
+    // Show "waking up" message after 5s — indicates cold start, not failure
+    warmupTimerRef.current = setTimeout(() => setIsWarmingUp(true), 5_000);
+
     try {
       const res = await authApi.login(values.email, values.password);
       const { user, tokens } = res.data.data;
@@ -34,7 +41,10 @@ export default function LoginPage() {
       router.replace('/dashboard');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg ?? 'Login failed. Check your credentials.');
+      setError(msg ?? 'Login failed. Check your credentials or try again.');
+    } finally {
+      if (warmupTimerRef.current) clearTimeout(warmupTimerRef.current);
+      setIsWarmingUp(false);
     }
   };
 
@@ -62,6 +72,19 @@ export default function LoginPage() {
         <p className="text-xs mb-6" style={{ color: 'var(--text-faint)' }}>Authorised personnel only. All sessions are audited.</p>
 
         <AnimatePresence>
+          {isWarmingUp && !error && (
+            <motion.div
+              key="warmup"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-4 px-3 py-2 rounded-lg text-sm flex items-center gap-2"
+              style={{ background: 'rgba(201,123,26,0.12)', border: '1px solid rgba(201,123,26,0.3)', color: '#C97B1A' }}
+            >
+              <Zap size={14} className="animate-pulse" />
+              Services are waking up, please wait…
+            </motion.div>
+          )}
           {error && (
             <motion.div
               key="error"

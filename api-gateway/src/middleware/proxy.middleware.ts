@@ -65,7 +65,9 @@ export const proxyTo = (serviceKey: ServiceKey) =>
         },
         data: ['POST', 'PUT', 'PATCH'].includes(req.method) ? req.body : undefined,
         params: req.query,
-        timeout: 15000,
+        // Cold-start: Render free-tier can take 30–60s to wake up.
+        // 15s was guaranteed to timeout and trip the circuit. Use 60s instead.
+        timeout: 60_000,
         validateStatus: () => true,  // Don't throw on 4xx/5xx — pass them through
         maxBodyLength: 50 * 1024 * 1024, // 50MB for audio file uploads
         maxContentLength: 50 * 1024 * 1024,

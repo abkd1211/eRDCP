@@ -1,0 +1,568 @@
+{
+	"info": {
+		"_postman_id": "erdcp-unified-001",
+		"name": "eRDCP Unified Platform API",
+		"description": "Comprehensive API collection for the National Emergency Response and Dispatch Coordination Platform (eRDCP). Covers Auth, Incidents, Dispatch, Analytics, and AI Agent services.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Auth Service",
+			"description": "Identity, Users, and Roles management.",
+			"item": [
+				{
+					"name": "Register User",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Kwame Mensah\",\n  \"email\": \"kwame@emergency.gh\",\n  \"password\": \"SecurePass123\",\n  \"role\": \"SYSTEM_ADMIN\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
+						},
+						"description": "Create a new system user."
+					},
+					"response": []
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"const response = pm.response.json();",
+									"if (response.success && response.data.tokens) {",
+									"    pm.collectionVariables.set(\"accessToken\", response.data.tokens.accessToken);",
+									"    console.log(\"Access Token updated in Collection Variables\");",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"kwame@emergency.gh\",\n  \"password\": \"SecurePass123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"description": "Login to receive JWT tokens. The access token is automatically saved to the collection variables for use in other requests."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/profile",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"profile"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Users (Admin)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/users?page=1&limit=20",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"users"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. Incident Service",
+			"description": "Incident lifecycle & nearest responder selection.",
+			"item": [
+				{
+					"name": "Create Incident (Auto-Dispatch)",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"citizenName\": \"Kofi Adu\",\n  \"citizenPhone\": \"+233244123456\",\n  \"incidentType\": \"MEDICAL\",\n  \"latitude\": 5.6037,\n  \"longitude\": -0.1870,\n  \"address\": \"Ring Road Central, Accra\",\n  \"notes\": \"Caller reports building fire on 3rd floor\",\n  \"priority\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/incidents",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"incidents"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List All Incidents",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/incidents?status=CREATED&type=MEDICAL",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"incidents"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "CREATED"
+								},
+								{
+									"key": "type",
+									"value": "MEDICAL"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Incident Status",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"status\": \"IN_PROGRESS\",\n  \"note\": \"Unit is on-scene and providing assistance.\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/incidents/{{incidentId}}/status",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"incidents",
+								"{{incidentId}}",
+								"status"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Find Nearest Responder",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/incidents/nearest/5.6037/-0.1870/AMBULANCE",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"incidents",
+								"nearest",
+								"5.6037",
+								"-0.1870",
+								"AMBULANCE"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Dispatch & Tracking",
+			"description": "Real-time vehicle movement and GPS logs.",
+			"item": [
+				{
+					"name": "Register Vehicle",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"vehicleCode\": \"AMB-KBT-01\",\n  \"type\": \"AMBULANCE\",\n  \"stationId\": \"station-uuid\",\n  \"stationName\": \"Korle Bu Teaching Hospital\",\n  \"incidentServiceId\": \"responder-uuid\",\n  \"driverUserId\": \"user-uuid\",\n  \"driverName\": \"Kwesi Mensah\",\n  \"latitude\": 5.5360,\n  \"longitude\": -0.2278\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/vehicles/register",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"vehicles",
+								"register"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Precise GPS History",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/vehicles/{{vehicleId}}/history?limit=100",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"vehicles",
+								"{{vehicleId}}",
+								"history"
+							],
+							"query": [
+								{
+									"key": "limit",
+									"value": "100"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Push GPS Ping (REST Fallback)",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"latitude\": 5.6037,\n  \"longitude\": -0.1870,\n  \"speedKmh\": 65.0,\n  \"heading\": \"NE\",\n  \"batteryPct\": 78\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/vehicles/{{vehicleId}}/location",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"vehicles",
+								"{{vehicleId}}",
+								"location"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4. Analytics & Monitoring",
+			"description": "Insights, SLA reports, and heatmaps.",
+			"item": [
+				{
+					"name": "Get Dashboard Metrics",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/analytics/dashboard",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"analytics",
+								"dashboard"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "SLA Compliance Report",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/analytics/sla?period=week",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"analytics",
+								"sla"
+							],
+							"query": [
+								{
+									"key": "period",
+									"value": "week"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Peak Hours Analysis",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/analytics/peak-hours?period=month",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"analytics",
+								"peak-hours"
+							],
+							"query": [
+								{
+									"key": "period",
+									"value": "month"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Incident Heatmap",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/analytics/heatmap?period=today",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"analytics",
+								"heatmap"
+							],
+							"query": [
+								{
+									"key": "period",
+									"value": "today"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "5. AI Call Agent",
+			"description": "Audio ingestion and NLP extraction.",
+			"item": [
+				{
+					"name": "Ingest Audio Call",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "multipart",
+							"multipart": [
+								{
+									"key": "audio",
+									"type": "file",
+									"src": []
+								},
+								{
+									"key": "callerPhone",
+									"value": "+233244123456",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{baseUrl}}/agent/call/ingest",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agent",
+								"call",
+								"ingest"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Session Details",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/agent/calls/{{sessionId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agent",
+								"calls",
+								"{{sessionId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Review AI Extraction",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"corrections\": {\n    \"citizenName\": \"Kofi Mensah\",\n    \"incidentType\": \"MEDICAL\",\n    \"locationText\": \"N1 Highway near Achimota, Accra\"\n  }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/agent/calls/{{sessionId}}/review",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"agent",
+								"calls",
+								"{{sessionId}}",
+								"review"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{accessToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://erdcp-gateway.onrender.com",
+			"type": "string"
+		},
+		{
+			"key": "accessToken",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "incidentId",
+			"value": "replace-with-actual-id",
+			"type": "string"
+		},
+		{
+			"key": "vehicleId",
+			"value": "replace-with-actual-id",
+			"type": "string"
+		},
+		{
+			"key": "sessionId",
+			"value": "replace-with-actual-id",
+			"type": "string"
+		}
+	]
+}

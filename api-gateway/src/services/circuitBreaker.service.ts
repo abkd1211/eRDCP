@@ -11,6 +11,23 @@ interface CircuitStatus {
   openedAt:    string | null;
 }
 
+// ─── Clear all circuits on startup ───────────────────────────────────────────
+// When a Render free-tier box wakes up, all services cold-start simultaneously.
+// Any stale OPEN circuits from a previous death spiral must be wiped so the
+// gateway doesn't block traffic before services have had a chance to wake up.
+export const clearAllCircuitsOnStartup = async (): Promise<void> => {
+  try {
+    for (const key of Object.keys(SERVICES)) {
+      await redisClient.del(REDIS_KEYS.circuitBreaker(key as ServiceKey));
+    }
+    logger.info('All circuit breaker states cleared on startup (cold-start protection)');
+  } catch (err) {
+    logger.warn('Could not clear circuits on startup (Redis may not be ready yet)', {
+      error: (err as Error).message,
+    });
+  }
+};
+
 // ─── Record a failure for a service ──────────────────────────────────────────
 export const recordFailure = async (service: ServiceKey): Promise<void> => {
   const key    = REDIS_KEYS.circuitBreaker(service);
@@ -28,10 +45,14 @@ export const recordFailure = async (service: ServiceKey): Promise<void> => {
   status.failures++;
   status.lastFailure = new Date().toISOString();
 
-  if (status.failures >= env.CIRCUIT_BREAKER_THRESHOLD) {
+  // Use a higher effective threshold for cold-start scenarios:
+  // env.CIRCUIT_BREAKER_THRESHOLD is the config value (default 5), but we
+  // double it so transient cold-start timeouts don't permanently open circuits.
+  const effectiveThreshold = env.CIRCUIT_BREAKER_THRESHOLD * 2;
+  if (status.failures >= effectiveThreshold) {
     status.state    = 'OPEN';
     status.openedAt = new Date().toISOString();
-    logger.error(`Circuit OPEN for ${service}`, { failures: status.failures });
+    logger.error(`Circuit OPEN for ${service}`, { failures: status.failures, threshold: effectiveThreshold });
   }
 
   try {
